@@ -25,6 +25,7 @@ set(INCLUDE_DIRECTORIES ${CMAKE_SOURCE_DIR}/include/uapi/)
 set(INCLUDE_DIRECTORIES ${CMAKE_SOURCE_DIR}/arch/arm/include/)
 set(INCLUDE_DIRECTORIES ${CMAKE_SOURCE_DIR}/arch/arm/include/uapi/)
 add_executable(charfs charfs.c)
+add_executable(chardevtest chardevtest.c)
 
 
 # Target to SCP to and make on Zynq
