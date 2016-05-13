@@ -51,25 +51,25 @@
 #define SHUTDOWN_TIMEOUT	(shutdown_timeout * HZ)
 
 static unsigned char admin_timeout = 60;
-module_param(admin_timeout, byte, 0644);
-MODULE_PARM_DESC(admin_timeout, "timeout in seconds for admin commands");
+//module_param(admin_timeout, byte, 0644);
+//MODULE_PARM_DESC(admin_timeout, "timeout in seconds for admin commands");
 
 unsigned char nvme_io_timeout = 30;
-module_param_named(io_timeout, nvme_io_timeout, byte, 0644);
-MODULE_PARM_DESC(io_timeout, "timeout in seconds for I/O");
+//module_param_named(io_timeout, nvme_io_timeout, byte, 0644);
+//MODULE_PARM_DESC(io_timeout, "timeout in seconds for I/O");
 
 static unsigned char shutdown_timeout = 5;
-module_param(shutdown_timeout, byte, 0644);
-MODULE_PARM_DESC(shutdown_timeout, "timeout in seconds for controller shutdown");
+//module_param(shutdown_timeout, byte, 0644);
+//MODULE_PARM_DESC(shutdown_timeout, "timeout in seconds for controller shutdown");
 
 static int nvme_major;
-module_param(nvme_major, int, 0);
+//module_param(nvme_major, int, 0);
 
 static int nvme_char_major;
-module_param(nvme_char_major, int, 0);
+//module_param(nvme_char_major, int, 0);
 
 static int use_threaded_interrupts;
-module_param(use_threaded_interrupts, int, 0);
+//module_param(use_threaded_interrupts, int, 0);
 
 static DEFINE_SPINLOCK(dev_list_lock);
 static LIST_HEAD(dev_list);
@@ -3174,8 +3174,8 @@ static void __exit nvme_exit(void)
 	_nvme_check_size();
 }
 
-MODULE_AUTHOR("Matthew Wilcox <willy@linux.intel.com>");
-MODULE_LICENSE("GPL");
-MODULE_VERSION("1.0");
-module_init(nvme_init);
-module_exit(nvme_exit);
+//MODULE_AUTHOR("Matthew Wilcox <willy@linux.intel.com>");
+//MODULE_LICENSE("GPL");
+//MODULE_VERSION("1.0");
+//module_init(nvme_init);
+//module_exit(nvme_exit);
