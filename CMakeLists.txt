@@ -15,7 +15,7 @@ IF(UNIX)
 ENDIF(UNIX)
 
 
-set(SOURCES charfs.c nvme-core.c)
+set(SOURCES charfs.c nvme-core.c nvme-scsi.c)
 
 
 # Fix include directories
