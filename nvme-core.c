@@ -42,6 +42,8 @@
 #include <scsi/sg.h>
 #include <asm-generic/io-64-nonatomic-lo-hi.h>
 
+#include "nvme-core.h"
+
 #define NVME_MINORS		(1U << MINORBITS)
 #define NVME_Q_DEPTH		1024
 #define NVME_AQ_DEPTH		256
@@ -3179,3 +3181,12 @@ static void __exit nvme_exit(void)
 //MODULE_VERSION("1.0");
 //module_init(nvme_init);
 //module_exit(nvme_exit);
+
+
+int charfs_nvme_init(void) {
+	return nvme_init();
+}
+
+void charfs_nvme_exit(void) {
+	nvme_exit();
+}

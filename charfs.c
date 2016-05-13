@@ -9,6 +9,7 @@
 #include <linux/fs.h>             // Header for the Linux file system support
 #include <linux/kobject.h>        // Using kobjects for the sysfs bindings
 #include <asm/uaccess.h>          // Required for the copy to user function
+#include "nvme-core.h"
 
 #define  DEVICE_NAME "charfs"     ///< The device will appear at /dev/charfs using this value
 #define  CLASS_NAME  "charfs"     ///< The device class -- this is a character device driver
@@ -114,6 +115,17 @@ static int __init charfs_init(void){
 		return PTR_ERR(charfsDevice);
 	}
 	printk(KERN_INFO "CharFS: device class created correctly\n"); // Made it! device was initialized
+
+
+
+
+	printk(KERN_INFO "Initialising NVMe driver...\n");
+	result = charfs_nvme_init();
+	printk(KERN_INFO "NVMe init returned %d\n", result);
+
+
+
+
 	return 0;
 }
 
@@ -122,6 +134,10 @@ static int __init charfs_init(void){
  *  code is used for a built-in driver (not a LKM) that this function is not required.
  */
 static void __exit charfs_exit(void){
+
+	printk(KERN_INFO "Exiting NVMe driver...\n");
+	charfs_nvme_exit();
+
 	device_destroy(charfsClass, MKDEV(majorNumber, 0));     // remove the device
 	class_unregister(charfsClass);                          // unregister the device class
 	class_destroy(charfsClass);                             // remove the device class
