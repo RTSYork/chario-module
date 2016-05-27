@@ -27,7 +27,7 @@ set(INCLUDE_DIRECTORIES ${CMAKE_SOURCE_DIR}/include/)
 set(INCLUDE_DIRECTORIES ${CMAKE_SOURCE_DIR}/include/uapi/)
 set(INCLUDE_DIRECTORIES ${CMAKE_SOURCE_DIR}/arch/arm/include/)
 set(INCLUDE_DIRECTORIES ${CMAKE_SOURCE_DIR}/arch/arm/include/uapi/)
-add_definitions(-D__KERNEL__=1)
+add_definitions(-D__CLION__)
 add_executable(charfs ${SOURCES})
 add_executable(chardevtest chardevtest.c)
 

@@ -12,6 +12,8 @@
  * more details.
  */
 
+#include "linux_includes.h"
+
 #include <linux/nvme.h>
 #include <linux/bitops.h>
 #include <linux/blkdev.h>

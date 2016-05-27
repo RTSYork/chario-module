@@ -2,6 +2,8 @@
  * Based on http://derekmolloy.ie/writing-a-linux-kernel-module-part-2-a-character-device/
  */
 
+#include "linux_includes.h"
+
 #include <linux/init.h>           // Macros used to mark up functions e.g. __init __exit
 #include <linux/module.h>         // Core header for loading LKMs into the kernel
 #include <linux/device.h>         // Header to support the kernel Driver Model
@@ -9,7 +11,9 @@
 #include <linux/fs.h>             // Header for the Linux file system support
 #include <linux/kobject.h>        // Using kobjects for the sysfs bindings
 #include <asm/uaccess.h>          // Required for the copy to user function
+
 #include "nvme-core.h"
+
 
 #define  DEVICE_NAME "charfs"     ///< The device will appear at /dev/charfs using this value
 #define  CLASS_NAME  "charfs"     ///< The device class -- this is a character device driver
