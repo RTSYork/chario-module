@@ -123,9 +123,9 @@ static int __init charfs_init(void){
 
 
 
-	printk(KERN_INFO "Initialising NVMe driver...\n");
+	printk(KERN_INFO "CharFS: Initialising NVMe driver...\n");
 	result = charfs_nvme_init();
-	printk(KERN_INFO "NVMe init returned %d\n", result);
+	printk(KERN_INFO "CharFS: NVMe init returned %d\n", result);
 
 
 
@@ -139,7 +139,7 @@ static int __init charfs_init(void){
  */
 static void __exit charfs_exit(void){
 
-	printk(KERN_INFO "Exiting NVMe driver...\n");
+	printk(KERN_INFO "CharFS: Exiting NVMe driver...\n");
 	charfs_nvme_exit();
 
 	device_destroy(charfsClass, MKDEV(majorNumber, 0));     // remove the device

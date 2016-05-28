@@ -768,6 +768,8 @@ static int nvme_submit_iod(struct nvme_queue *nvmeq, struct nvme_iod *iod,
 	u16 control = 0;
 	u32 dsmgmt = 0;
 
+	printk(KERN_DEBUG "NVMe: nvme_submit_iod(), qid = %d\n", nvmeq->qid);
+
 	if (req->cmd_flags & REQ_FUA)
 		control |= NVME_RW_FUA;
 	if (req->cmd_flags & (REQ_FAILFAST_DEV | REQ_RAHEAD))
@@ -811,6 +813,8 @@ static int nvme_submit_iod(struct nvme_queue *nvmeq, struct nvme_iod *iod,
 		nvmeq->sq_tail = 0;
 	writel(nvmeq->sq_tail, nvmeq->q_db);
 
+	printk(KERN_DEBUG "NVMe: %s at slba %llu\n", (rq_data_dir(req) ? "write" : "read"), cmnd->rw.slba);
+
 	return 0;
 }
 
@@ -823,6 +827,8 @@ static int nvme_queue_rq(struct blk_mq_hw_ctx *hctx,
 	struct nvme_cmd_info *cmd = blk_mq_rq_to_pdu(req);
 	struct nvme_iod *iod;
 	enum dma_data_direction dma_dir;
+
+	printk(KERN_DEBUG "NVMe: nvme_queue_rq(), qid = %d\n", nvmeq->qid);
 
 	/*
 	 * If formated with metadata, require the block layer provide a buffer
@@ -914,6 +920,8 @@ static int nvme_process_cq(struct nvme_queue *nvmeq)
 {
 	u16 head, phase;
 
+	printk(KERN_DEBUG "NVMe: nvme_process_cq(), qid: %d\n", nvmeq->qid);
+
 	head = nvmeq->cq_head;
 	phase = nvmeq->cq_phase;
 
@@ -962,6 +970,9 @@ static irqreturn_t nvme_irq(int irq, void *data)
 {
 	irqreturn_t result;
 	struct nvme_queue *nvmeq = data;
+
+	printk(KERN_DEBUG "NVMe: nvme_irq(), irq: %d\n", irq);
+
 	spin_lock(&nvmeq->q_lock);
 	nvme_process_cq(nvmeq);
 	result = nvmeq->cqe_seen ? IRQ_HANDLED : IRQ_NONE;
@@ -1004,6 +1015,8 @@ static int nvme_submit_sync_cmd(struct request *req, struct nvme_command *cmd,
 	struct sync_cmd_info cmdinfo;
 	struct nvme_cmd_info *cmd_rq = blk_mq_rq_to_pdu(req);
 	struct nvme_queue *nvmeq = cmd_rq->nvmeq;
+
+	printk(KERN_DEBUG "NVMe: nvme_submit_sync_cmd(), qid: %d\n", nvmeq->qid);
 
 	cmdinfo.task = current;
 	cmdinfo.status = -EINTR;
