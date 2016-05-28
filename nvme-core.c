@@ -2174,7 +2174,7 @@ static void nvme_alloc_ns(struct nvme_dev *dev, unsigned nsid)
 	 */
 	set_capacity(disk, 0);
 	nvme_revalidate_disk(ns->disk);
-	add_disk(ns->disk);
+//	add_disk(ns->disk);
 	if (ns->ms)
 		revalidate_disk(ns->disk);
 	return;
@@ -3145,20 +3145,20 @@ static int __init nvme_init(void)
 	if (!nvme_workq)
 		return -ENOMEM;
 
-	result = register_blkdev(nvme_major, "nvme");
-	if (result < 0)
-		goto kill_workq;
-	else if (result > 0)
-		nvme_major = result;
+//	result = register_blkdev(nvme_major, "nvme");
+//	if (result < 0)
+//		goto kill_workq;
+//	else if (result > 0)
+//		nvme_major = result;
 
-	result = __register_chrdev(nvme_char_major, 0, NVME_MINORS, "nvme",
-							&nvme_dev_fops);
-	if (result < 0)
-		goto unregister_blkdev;
-	else if (result > 0)
-		nvme_char_major = result;
+//	result = __register_chrdev(nvme_char_major, 0, NVME_MINORS, "nvme",
+//							&nvme_dev_fops);
+//	if (result < 0)
+//		goto unregister_blkdev;
+//	else if (result > 0)
+//		nvme_char_major = result;
 
-	nvme_class = class_create(THIS_MODULE, "nvme");
+nvme_class = class_create(THIS_MODULE, "nvme");
 	if (IS_ERR(nvme_class)) {
 		result = PTR_ERR(nvme_class);
 		goto unregister_chrdev;
@@ -3172,10 +3172,10 @@ static int __init nvme_init(void)
  destroy_class:
 	class_destroy(nvme_class);
  unregister_chrdev:
-	__unregister_chrdev(nvme_char_major, 0, NVME_MINORS, "nvme");
- unregister_blkdev:
-	unregister_blkdev(nvme_major, "nvme");
- kill_workq:
+//	__unregister_chrdev(nvme_char_major, 0, NVME_MINORS, "nvme");
+// unregister_blkdev:
+//	unregister_blkdev(nvme_major, "nvme");
+// kill_workq:
 	destroy_workqueue(nvme_workq);
 	return result;
 }
@@ -3183,10 +3183,10 @@ static int __init nvme_init(void)
 static void __exit nvme_exit(void)
 {
 	pci_unregister_driver(&nvme_driver);
-	unregister_blkdev(nvme_major, "nvme");
+//	unregister_blkdev(nvme_major, "nvme");
 	destroy_workqueue(nvme_workq);
 	class_destroy(nvme_class);
-	__unregister_chrdev(nvme_char_major, 0, NVME_MINORS, "nvme");
+//	__unregister_chrdev(nvme_char_major, 0, NVME_MINORS, "nvme");
 	BUG_ON(nvme_thread && !IS_ERR(nvme_thread));
 	_nvme_check_size();
 }
