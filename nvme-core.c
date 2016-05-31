@@ -360,7 +360,7 @@ static void *nvme_finish_cmd(struct nvme_queue *nvmeq, int tag,
 	struct nvme_cmd_info *cmd = get_cmd_from_tag(nvmeq, tag);
 	void *ctx;
 
-	printk(KERN_DEBUG "NVMe: nvme_finish_cmd(), qid = %d, tag = %d\n", nvmeq->qid, tag);
+	printk(KERN_DEBUG "NVMe: nvme_finish_cmd(), qid: %d, tag: %d\n", nvmeq->qid, tag);
 
 	if (tag >= nvmeq->q_depth) {
 		*fn = special_completion;
@@ -399,7 +399,7 @@ static int nvme_submit_cmd(struct nvme_queue *nvmeq, struct nvme_command *cmd)
 	unsigned long flags;
 	int ret;
 
-	printk(KERN_DEBUG "NVMe: nvme_submit_cmd(), qid = %d\n", nvmeq->qid);
+	printk(KERN_DEBUG "NVMe: nvme_submit_cmd(), qid: %d\n", nvmeq->qid);
 
 	spin_lock_irqsave(&nvmeq->q_lock, flags);
 	ret = __nvme_submit_cmd(nvmeq, cmd);
@@ -776,7 +776,7 @@ static int nvme_submit_iod(struct nvme_queue *nvmeq, struct nvme_iod *iod,
 	u16 control = 0;
 	u32 dsmgmt = 0;
 
-	printk(KERN_DEBUG "NVMe: nvme_submit_iod(), qid = %d\n", nvmeq->qid);
+	printk(KERN_DEBUG "NVMe: nvme_submit_iod(), qid: %d\n", nvmeq->qid);
 
 	if (req->cmd_flags & REQ_FUA)
 		control |= NVME_RW_FUA;
@@ -836,7 +836,7 @@ static int nvme_queue_rq(struct blk_mq_hw_ctx *hctx,
 	struct nvme_iod *iod;
 	enum dma_data_direction dma_dir;
 
-	printk(KERN_DEBUG "NVMe: nvme_queue_rq(), qid = %d\n", nvmeq->qid);
+	printk(KERN_DEBUG "NVMe: nvme_queue_rq(), qid: %d\n", nvmeq->qid);
 
 	/*
 	 * If formated with metadata, require the block layer provide a buffer
@@ -1748,6 +1748,7 @@ struct nvme_iod *nvme_map_user_pages(struct nvme_dev *dev, int write,
 	if (err < count) {
 		count = err;
 		err = -EFAULT;
+		printk(KERN_DEBUG "NVMe: nvme_map_user_pages() get_user_pages_fast() failed\n");
 		goto put_pages;
 	}
 
@@ -2280,6 +2281,8 @@ static int nvme_setup_io_queues(struct nvme_dev *dev)
 	struct nvme_queue *adminq = dev->queues[0];
 	struct pci_dev *pdev = dev->pci_dev;
 	int result, i, vecs, nr_io_queues, size;
+
+	printk(KERN_DEBUG "NVMe: nvme_setup_io_queues()\n");
 
 	nr_io_queues = num_possible_cpus();
 	result = set_queue_count(dev, nr_io_queues);
