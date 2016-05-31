@@ -46,6 +46,8 @@
 
 #include "nvme-core.h"
 
+static struct nvme_dev *current_dev;
+
 #define NVME_MINORS		(1U << MINORBITS)
 #define NVME_Q_DEPTH		1024
 #define NVME_AQ_DEPTH		256
@@ -3019,6 +3021,9 @@ static int nvme_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		set_dev_node(&pdev->dev, 0);
 
 	dev = kzalloc_node(sizeof(*dev), GFP_KERNEL, node);
+
+	current_dev = dev;
+
 	if (!dev)
 		return -ENOMEM;
 	dev->entry = kzalloc_node(num_possible_cpus() * sizeof(*dev->entry),
@@ -3271,4 +3276,8 @@ int charfs_nvme_submit_iod(struct nvme_queue *nvmeq, struct nvme_iod *iod, struc
 
 int charfs_nvme_queue_rq(struct blk_mq_hw_ctx *hctx, const struct blk_mq_queue_data *bd) {
 	return nvme_queue_rq(hctx, bd);
+}
+
+struct nvme_dev *charfs_nvme_get_current_dev() {
+	return current_dev;
 }
