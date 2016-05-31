@@ -66,6 +66,76 @@ static struct attribute_group attr_group = {
 
 static struct kobject *charfs_kobj;
 
+/*
+static int rq_test(void) {
+
+	struct nvme_dev *dev = charfs_nvme_get_current_dev();
+	struct nvme_ns *ns = list_first_entry(&dev->namespaces, struct nvme_ns, list);
+	struct nvme_queue *queue = dev->queues[1];
+
+	struct request_queue rq_queue = {
+		.queuedata = &ns
+	};
+
+	struct blk_mq_hw_ctx hctx = {
+		.queue = &rq_queue,
+		.driver_data = queue
+	};
+
+	struct request *req = kmalloc(sizeof(struct request) + sizeof(struct nvme_cmd_info), GFP_KERNEL);
+
+//	if (req == NULL) {
+//		printk(KERN_ERR "CharFS: No memory to allocate request");
+//		return 1;
+//	}
+
+	struct nvme_cmd_info *cmd = blk_mq_rq_to_pdu(req);
+
+
+
+
+
+	const struct blk_mq_queue_data bd = {
+		.rq = req,
+		.last = true,
+		.list = NULL
+	};
+
+
+	return charfs_nvme_queue_rq(&hctx, &bd);
+}
+*/
+/*
+static int submit_cmd_test(void) {
+	struct nvme_dev *dev = charfs_nvme_get_current_dev();
+	struct nvme_queue *queue = dev->queues[0];
+
+	struct nvme_rw_command rw_command = {
+		.opcode = NULL,
+		.flags = NULL,
+		.command_id = NULL,
+		.nsid = NULL,
+		.rsvd2 = NULL,
+		.metadata = NULL,
+		.prp1 = NULL,
+		.prp2 = NULL,
+		.slba = NULL,
+		.length = NULL,
+		.control = NULL,
+		.dsmgmt = NULL,
+		.reftag = NULL,
+		.apptag = NULL,
+		.appmask = NULL
+	};
+
+	struct nvme_command cmd = {
+			.rw = rw_command
+	};
+
+	return charfs_nvme_submit_cmd(queue, cmd);
+}
+*/
+
 static int submit_io_test(void) {
 	struct nvme_dev *dev = charfs_nvme_get_current_dev();
 	struct nvme_ns *ns = list_first_entry(&dev->namespaces, struct nvme_ns, list);
