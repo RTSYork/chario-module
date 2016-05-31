@@ -1800,6 +1800,53 @@ void nvme_unmap_user_pages(struct nvme_dev *dev, int write,
 		put_page(sg_page(&iod->sg[i]));
 }
 
+struct nvme_iod *nvme_map_kernel_pages(struct nvme_dev *dev, int write,
+				     unsigned long addr, unsigned length)
+{
+	int err, nents;
+	struct scatterlist *sg;
+	struct nvme_iod *iod;
+
+	printk(KERN_DEBUG "NVMe: nvme_map_kernel_pages(), addr: 0x%08lx, length: %u\n", addr, length);
+
+	if (addr & 3)
+		return ERR_PTR(-EINVAL);
+	if (!length || length > INT_MAX - PAGE_SIZE)
+		return ERR_PTR(-EINVAL);
+
+	err = -ENOMEM;
+	iod = __nvme_alloc_iod(1, length, dev, 0, GFP_KERNEL);
+	if (!iod)
+		goto put_pages;
+
+	sg = iod->sg;
+	sg_init_table(sg, 1);
+	sg_set_buf(&sg[0], (const void *)addr, length);
+	sg_mark_end(&sg[0]);
+	iod->nents = 1;
+
+	nents = dma_map_sg(&dev->pci_dev->dev, sg, 1,
+			   write ? DMA_TO_DEVICE : DMA_FROM_DEVICE);
+	if (!nents)
+		goto free_iod;
+
+	return iod;
+
+	free_iod:
+	kfree(iod);
+	put_pages:
+	return ERR_PTR(err);
+}
+
+void nvme_unmap_kernel_pages(struct nvme_dev *dev, int write,
+			   struct nvme_iod *iod)
+{
+	printk(KERN_DEBUG "NVMe: nvme_unmap_kernel_pages()\n");
+
+	dma_unmap_sg(&dev->pci_dev->dev, iod->sg, iod->nents,
+		     write ? DMA_TO_DEVICE : DMA_FROM_DEVICE);
+}
+
 static int nvme_submit_io(struct nvme_ns *ns, struct nvme_user_io __user *uio)
 {
 	struct nvme_dev *dev = ns->dev;
@@ -1886,6 +1933,200 @@ static int nvme_submit_io(struct nvme_ns *ns, struct nvme_user_io __user *uio)
 		if (status == NVME_SC_SUCCESS && !write) {
 			if (copy_to_user(metadata, meta, meta_len))
 				status = -EFAULT;
+		}
+		dma_free_coherent(&dev->pci_dev->dev, meta_len, meta, meta_dma);
+	}
+	return status;
+}
+
+static int nvme_submit_io_kernel(struct nvme_ns *ns, struct nvme_user_io *uio)
+{
+	struct nvme_dev *dev = ns->dev;
+	struct nvme_user_io io;
+	struct nvme_command c;
+	unsigned length, meta_len, prp_len;
+	int status, write;
+	struct nvme_iod *iod;
+	dma_addr_t meta_dma = 0;
+	void *meta = NULL;
+	void *metadata;
+
+	printk(KERN_DEBUG "NVMe: nvme_submit_io_kernel()\n");
+
+	if (memcpy(&io, uio, sizeof(io)) != &io) {
+		printk(KERN_DEBUG "NVMe: nvme_submit_io_kernel() memcpy to &io failed\n");
+		return -EFAULT;
+	}
+	length = (io.nblocks + 1) << ns->lba_shift;
+	meta_len = (io.nblocks + 1) * ns->ms;
+
+	if (meta_len && ((io.metadata & 3) || !io.metadata) && !ns->ext)
+		return -EINVAL;
+	else if (meta_len && ns->ext) {
+		length += meta_len;
+		meta_len = 0;
+	}
+
+	metadata = (void *)(unsigned long)io.metadata;
+
+	write = io.opcode & 1;
+
+	switch (io.opcode) {
+		case nvme_cmd_write:
+		case nvme_cmd_read:
+		case nvme_cmd_compare:
+			iod = nvme_map_kernel_pages(dev, write, io.addr, length);
+			break;
+		default:
+			return -EINVAL;
+	}
+
+	if (IS_ERR(iod))
+		return PTR_ERR(iod);
+
+	prp_len = nvme_setup_prps(dev, iod, length, GFP_KERNEL);
+	if (length != prp_len) {
+		status = -ENOMEM;
+		goto unmap;
+	}
+	if (meta_len) {
+		meta = dma_alloc_coherent(&dev->pci_dev->dev, meta_len,
+		                          &meta_dma, GFP_KERNEL);
+
+		if (!meta) {
+			status = -ENOMEM;
+			goto unmap;
+		}
+		if (write) {
+			if (memcpy(meta, metadata, meta_len) != meta) {
+				printk(KERN_DEBUG "NVMe: nvme_submit_io_kernel() memcpy to meta failed\n");
+				status = -EFAULT;
+				goto unmap;
+			}
+		}
+	}
+
+	memset(&c, 0, sizeof(c));
+	c.rw.opcode = io.opcode;
+	c.rw.flags = io.flags;
+	c.rw.nsid = cpu_to_le32(ns->ns_id);
+	c.rw.slba = cpu_to_le64(io.slba);
+	c.rw.length = cpu_to_le16(io.nblocks);
+	c.rw.control = cpu_to_le16(io.control);
+	c.rw.dsmgmt = cpu_to_le32(io.dsmgmt);
+	c.rw.reftag = cpu_to_le32(io.reftag);
+	c.rw.apptag = cpu_to_le16(io.apptag);
+	c.rw.appmask = cpu_to_le16(io.appmask);
+	c.rw.prp1 = cpu_to_le64(sg_dma_address(iod->sg));
+	c.rw.prp2 = cpu_to_le64(iod->first_dma);
+	c.rw.metadata = cpu_to_le64(meta_dma);
+	status = nvme_submit_io_cmd(dev, ns, &c, NULL);
+	unmap:
+	nvme_unmap_kernel_pages(dev, write, iod);
+	nvme_free_iod(dev, iod);
+	if (meta) {
+		if (status == NVME_SC_SUCCESS && !write) {
+			if (memcpy(metadata, meta, meta_len) != metadata) {
+				printk(KERN_DEBUG "NVMe: nvme_submit_io_kernel() memcpy to metadata failed\n");
+				status = -EFAULT;
+			}
+		}
+		dma_free_coherent(&dev->pci_dev->dev, meta_len, meta, meta_dma);
+	}
+	return status;
+}
+
+static int nvme_submit_io_user(struct nvme_ns *ns, struct nvme_user_io *uio)
+{
+	struct nvme_dev *dev = ns->dev;
+	struct nvme_user_io io;
+	struct nvme_command c;
+	unsigned length, meta_len, prp_len;
+	int status, write;
+	struct nvme_iod *iod;
+	dma_addr_t meta_dma = 0;
+	void *meta = NULL;
+	void *metadata;
+
+	printk(KERN_DEBUG "NVMe: nvme_submit_io_user()\n");
+
+	if (memcpy(&io, uio, sizeof(io)) != &io) {
+		printk(KERN_DEBUG "NVMe: nvme_submit_io_user() memcpy to &io failed\n");
+		return -EFAULT;
+	}
+	length = (io.nblocks + 1) << ns->lba_shift;
+	meta_len = (io.nblocks + 1) * ns->ms;
+
+	if (meta_len && ((io.metadata & 3) || !io.metadata) && !ns->ext)
+		return -EINVAL;
+	else if (meta_len && ns->ext) {
+		length += meta_len;
+		meta_len = 0;
+	}
+
+	metadata = (void *)(unsigned long)io.metadata;
+
+	write = io.opcode & 1;
+
+	switch (io.opcode) {
+		case nvme_cmd_write:
+		case nvme_cmd_read:
+		case nvme_cmd_compare:
+			iod = nvme_map_user_pages(dev, write, io.addr, length);
+			break;
+		default:
+			return -EINVAL;
+	}
+
+	if (IS_ERR(iod))
+		return PTR_ERR(iod);
+
+	prp_len = nvme_setup_prps(dev, iod, length, GFP_KERNEL);
+	if (length != prp_len) {
+		status = -ENOMEM;
+		goto unmap;
+	}
+	if (meta_len) {
+		meta = dma_alloc_coherent(&dev->pci_dev->dev, meta_len,
+					  &meta_dma, GFP_KERNEL);
+
+		if (!meta) {
+			status = -ENOMEM;
+			goto unmap;
+		}
+		if (write) {
+			if (memcpy(meta, metadata, meta_len) != meta) {
+				printk(KERN_DEBUG "NVMe: nvme_submit_io_user() memcpy to meta failed\n");
+				status = -EFAULT;
+				goto unmap;
+			}
+		}
+	}
+
+	memset(&c, 0, sizeof(c));
+	c.rw.opcode = io.opcode;
+	c.rw.flags = io.flags;
+	c.rw.nsid = cpu_to_le32(ns->ns_id);
+	c.rw.slba = cpu_to_le64(io.slba);
+	c.rw.length = cpu_to_le16(io.nblocks);
+	c.rw.control = cpu_to_le16(io.control);
+	c.rw.dsmgmt = cpu_to_le32(io.dsmgmt);
+	c.rw.reftag = cpu_to_le32(io.reftag);
+	c.rw.apptag = cpu_to_le16(io.apptag);
+	c.rw.appmask = cpu_to_le16(io.appmask);
+	c.rw.prp1 = cpu_to_le64(sg_dma_address(iod->sg));
+	c.rw.prp2 = cpu_to_le64(iod->first_dma);
+	c.rw.metadata = cpu_to_le64(meta_dma);
+	status = nvme_submit_io_cmd(dev, ns, &c, NULL);
+	unmap:
+	nvme_unmap_user_pages(dev, write, iod);
+	nvme_free_iod(dev, iod);
+	if (meta) {
+		if (status == NVME_SC_SUCCESS && !write) {
+			if (memcpy(metadata, meta, meta_len) != metadata) {
+				printk(KERN_DEBUG "NVMe: nvme_submit_io_user() memcpy to metadata failed\n");
+				status = -EFAULT;
+			}
 		}
 		dma_free_coherent(&dev->pci_dev->dev, meta_len, meta, meta_dma);
 	}
@@ -3279,6 +3520,14 @@ int charfs_nvme_submit_iod(struct nvme_queue *nvmeq, struct nvme_iod *iod, struc
 
 int charfs_nvme_queue_rq(struct blk_mq_hw_ctx *hctx, const struct blk_mq_queue_data *bd) {
 	return nvme_queue_rq(hctx, bd);
+}
+
+int charfs_nvme_submit_io_kernel(struct nvme_ns *ns, struct nvme_user_io *uio) {
+	return nvme_submit_io_kernel(ns, uio);
+}
+
+int charfs_nvme_submit_io_user(struct nvme_ns *ns, struct nvme_user_io *uio) {
+	return nvme_submit_io_user(ns, uio);
 }
 
 struct nvme_dev *charfs_nvme_get_current_dev() {
