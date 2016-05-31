@@ -3522,6 +3522,10 @@ int charfs_nvme_queue_rq(struct blk_mq_hw_ctx *hctx, const struct blk_mq_queue_d
 	return nvme_queue_rq(hctx, bd);
 }
 
+int charfs_nvme_submit_cmd(struct nvme_queue *nvmeq, struct nvme_command *cmd) {
+	return nvme_submit_cmd(nvmeq, cmd);
+}
+
 int charfs_nvme_submit_io_kernel(struct nvme_ns *ns, struct nvme_user_io *uio) {
 	return nvme_submit_io_kernel(ns, uio);
 }
