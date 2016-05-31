@@ -107,6 +107,37 @@ static int submit_io_test(void) {
 	return result;
 }
 
+static int submit_user_io(char *buffer, size_t len) {
+	struct nvme_dev *dev = charfs_nvme_get_current_dev();
+	struct nvme_ns *ns = list_first_entry(&dev->namespaces, struct nvme_ns, list);
+	__u16 blocks = (__u16)DIV_ROUND_UP(len, 4096);
+	int result;
+
+	struct nvme_user_io uio = {
+		.opcode = nvme_cmd_read,		// (__u8)  Read command
+		.flags = 0,				// (__u8)  No flags?
+		.control = 0,				// (__u16) ?
+		.nblocks = blocks,			// (__u16) 1 block (4096 bytes)
+		.rsvd = 0,				// (__u16) ?
+		.metadata = 0,				// (__u64) ?
+		.addr = (__u64)(uintptr_t)buffer,	// (__u64) Buffer address
+		.slba = 0,				// (__u64) Block 0
+		.dsmgmt = 0,				// (__u32) ?
+		.reftag = 0,				// (__u32) ?
+		.apptag = 0,				// (__u16) ?
+		.appmask = 0				// (__u16) ?
+	};
+
+	printk(KERN_DEBUG "CharFS: submit_user_io()");
+
+	result = charfs_nvme_submit_io_user(ns, &uio);
+
+	printk(KERN_DEBUG "CharFS: submit_user_io() result: %d", result);
+
+	return result;
+}
+
+
 /** @brief The LKM initialization function
  *  The static keyword restricts the visibility of the function to within this C file. The __init
  *  macro means that for a built-in driver (not a LKM) the function is only used at initialization
@@ -208,19 +239,12 @@ static int dev_open(struct inode *inodep, struct file *filep){
  *  @param len The length of the b
  *  @param offset The offset if required
  */
-static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *offset){
-	int error_count = 0;
-	// copy_to_user has the format ( * to, *from, size) and returns 0 on success
-	error_count = copy_to_user(buffer, message, size_of_message);
+static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *offset) {
+	int result;
 
-	if (error_count==0){            // if true then have success
-		printk(KERN_INFO "CharFS: Sent %d characters to the user\n", size_of_message);
-		return (size_of_message=0);  // clear the position to the start and return 0
-	}
-	else {
-		printk(KERN_INFO "CharFS: Failed to send %d characters to the user\n", error_count);
-		return -EFAULT;              // Failed -- return a bad address message (i.e. -14)
-	}
+	result = submit_user_io(buffer, len);
+
+	return result;
 }
 
 /** @brief This function is called whenever the device is being written to from user space i.e.
