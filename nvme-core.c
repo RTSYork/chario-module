@@ -928,7 +928,7 @@ static int nvme_process_cq(struct nvme_queue *nvmeq)
 {
 	u16 head, phase;
 
-	printk(KERN_DEBUG "NVMe: nvme_process_cq(), qid: %d\n", nvmeq->qid);
+//	printk(KERN_DEBUG "NVMe: nvme_process_cq(), qid: %d\n", nvmeq->qid);
 
 	head = nvmeq->cq_head;
 	phase = nvmeq->cq_phase;
@@ -2134,7 +2134,7 @@ static int nvme_kthread(void *data)
 
 	while (!kthread_should_stop()) {
 
-		printk(KERN_DEBUG "NVMe: nvme_kthread() loop\n");
+//		printk(KERN_DEBUG "NVMe: nvme_kthread() loop\n");
 
 		set_current_state(TASK_INTERRUPTIBLE);
 		spin_lock(&dev_list_lock);
