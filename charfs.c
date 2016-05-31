@@ -56,13 +56,13 @@ static struct file_operations fops =
 static struct kobj_attribute test_attr = __ATTR(testNumber, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP, test_show, test_store);
 
 static struct attribute *charfs_attrs[] = {
-		&test_attr.attr,
-		NULL,
+	&test_attr.attr,
+	NULL,
 };
 
 static struct attribute_group attr_group = {
-		.name  = attrsName,
-		.attrs = charfs_attrs,
+	.name  = attrsName,
+	.attrs = charfs_attrs,
 };
 
 static struct kobject *charfs_kobj;
