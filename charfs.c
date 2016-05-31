@@ -30,7 +30,6 @@ static int    numberOpens = 0;              ///< Counts the number of times the 
 static struct class*  charfsClass  = NULL;  ///< The device-driver class struct pointer
 static struct device* charfsDevice = NULL;  ///< The device-driver device struct pointer
 static char   attrsName[] = "attrs";
-static unsigned testNumber = 0;
 
 // The prototype functions for the character driver -- must come before the struct definition
 static int     dev_open(struct inode *, struct file *);
@@ -53,7 +52,7 @@ static struct file_operations fops =
 	.release = dev_release,
 };
 
-static struct kobj_attribute test_attr = __ATTR(testNumber, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP, test_show, test_store);
+static struct kobj_attribute test_attr = __ATTR(test, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP, test_show, test_store);
 
 static struct attribute *charfs_attrs[] = {
 	&test_attr.attr,
@@ -67,6 +66,46 @@ static struct attribute_group attr_group = {
 
 static struct kobject *charfs_kobj;
 
+static int submit_io_test(void) {
+	struct nvme_dev *dev = charfs_nvme_get_current_dev();
+	struct nvme_ns *ns = list_first_entry(&dev->namespaces, struct nvme_ns, list);
+	int result;
+
+	char *data = kmalloc(8192, GFP_KERNEL);
+
+	struct nvme_user_io uio = {
+		.opcode = nvme_cmd_read,	// (__u8)  Read command
+		.flags = 0,			// (__u8)  No flags?
+		.control = 0,			// (__u16) ?
+		.nblocks = 1,			// (__u16) 1 block (4096 bytes)
+		.rsvd = 0,			// (__u16) ?
+		.metadata = 0,			// (__u64) ?
+		.addr = (__u64)(uintptr_t)data,	// (__u64) Buffer address
+		.slba = 0,			// (__u64) Block 0
+		.dsmgmt = 0,			// (__u32) ?
+		.reftag = 0,			// (__u32) ?
+		.apptag = 0,			// (__u16) ?
+		.appmask = 0			// (__u16) ?
+	};
+
+	printk(KERN_DEBUG "CharFS: submit_io_test()");
+
+	result = charfs_nvme_submit_io_kernel(ns, &uio);
+
+	printk(KERN_DEBUG "CharFS: submit_io_test() result: %d", result);
+
+	if (strlen(data) < 50) {
+		printk(KERN_DEBUG "CharFS: submit_io_test()   data: '%s'", data);
+	}
+	else {
+		data[50] = 0;
+		printk(KERN_DEBUG "CharFS: submit_io_test()   data: '%s' (truncated)", data);
+	}
+
+	kfree(data);
+
+	return result;
+}
 
 /** @brief The LKM initialization function
  *  The static keyword restricts the visibility of the function to within this C file. The __init
@@ -211,11 +250,11 @@ static int dev_release(struct inode *inodep, struct file *filep){
 
 
 static ssize_t test_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
-	return sprintf(buf, "%u\n", testNumber);
+	int result = submit_io_test();
+	return sprintf(buf, "submit_io_test() result: %d\n", result);
 }
 
 static ssize_t test_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
-	sscanf(buf, "%u", &testNumber);
 	return count;
 }
 
