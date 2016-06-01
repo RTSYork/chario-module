@@ -31,6 +31,7 @@ add_definitions(-D__CLION__)
 add_executable(charfs ${SOURCES})
 add_executable(chardevtest chardevtest.c)
 add_executable(readtest readtest.c)
+add_executable(writetest writetest.c)
 
 
 # Target to SCP to and make on Zynq
