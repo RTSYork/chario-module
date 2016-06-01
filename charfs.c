@@ -24,8 +24,6 @@ MODULE_DESCRIPTION("CharFS test"); ///< The description -- see modinfo
 MODULE_VERSION("0.1");            ///< A version number to inform users
 
 static int    majorNumber;                  ///< Stores the device number -- determined automatically
-static char   message[256] = {0};           ///< Memory for the string that is passed from userspace
-static short  size_of_message;              ///< Used to remember the size of the string stored
 static int    numberOpens = 0;              ///< Counts the number of times the device is opened
 static struct class*  charfsClass  = NULL;  ///< The device-driver class struct pointer
 static struct device* charfsDevice = NULL;  ///< The device-driver device struct pointer
@@ -177,14 +175,14 @@ static int submit_io_test(void) {
 	return result;
 }
 
-static int submit_user_io(char *buffer, size_t len) {
+static int submit_user_io(char *buffer, size_t len, __u8 command) {
 	struct nvme_dev *dev = charfs_nvme_get_current_dev();
 	struct nvme_ns *ns = list_first_entry(&dev->namespaces, struct nvme_ns, list);
 	__u16 blocks = (__u16)DIV_ROUND_UP(len, 4096);
 	int result;
 
 	struct nvme_user_io uio = {
-		.opcode = nvme_cmd_read,		// (__u8)  Read command
+		.opcode = command,			// (__u8)  Read command
 		.flags = 0,				// (__u8)  No flags?
 		.control = 0,				// (__u16) ?
 		.nblocks = blocks,			// (__u16) 1 block (4096 bytes)
@@ -312,7 +310,7 @@ static int dev_open(struct inode *inodep, struct file *filep){
 static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *offset) {
 	int result;
 
-	result = submit_user_io(buffer, len);
+	result = submit_user_io(buffer, len, nvme_cmd_read);
 
 	return result;
 }
@@ -325,11 +323,12 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
  *  @param len The length of the array of data that is being passed in the const char buffer
  *  @param offset The offset if required
  */
-static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, loff_t *offset){
-	sprintf(message, "%s (%d letters)", buffer, len);
-	size_of_message = strlen(message);
-	printk(KERN_INFO "CharFS: Received %d characters from the user\n", len);
-	return len;
+static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, loff_t *offset) {
+	int result;
+
+	result = submit_user_io((char *)buffer, len, nvme_cmd_write);
+
+	return result;
 }
 
 /** @brief The device release function that is called whenever the device is closed/released by
