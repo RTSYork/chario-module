@@ -39,6 +39,6 @@ add_custom_target(
         zynq-mitx ALL
         SOURCES ${SOURCES}
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        COMMAND scp *.c *.h Makefile zynq-mitx:/root/charfs
+        COMMAND rsync -uv *.c *.h Makefile zynq-mitx:/root/charfs
         COMMAND ssh zynq-mitx 'cd /root/charfs && make'
 )
