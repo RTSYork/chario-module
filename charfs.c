@@ -178,14 +178,14 @@ static int submit_io_test(void) {
 static int submit_user_io(char *buffer, size_t len, __u8 command) {
 	struct nvme_dev *dev = charfs_nvme_get_current_dev();
 	struct nvme_ns *ns = list_first_entry(&dev->namespaces, struct nvme_ns, list);
-	__u16 blocks = (__u16)((len >> ns->lba_shift) - 1);
+	__u16 blocks = (__u16)(((len - 1) >> ns->lba_shift)); // Should give number of blocks - 1
 	int result;
 
 	struct nvme_user_io uio = {
 		.opcode = command,			// (__u8)  Read command
 		.flags = 0,				// (__u8)  No flags?
 		.control = 0,				// (__u16) ?
-		.nblocks = blocks,			// (__u16) Number of blocks ((length / lba size) - 1)
+		.nblocks = blocks,			// (__u16) Number of blocks: floor((length - 1) / lba size)
 		.rsvd = 0,				// (__u16) ?
 		.metadata = 0,				// (__u64) ?
 		.addr = (__u64)(uintptr_t)buffer,	// (__u64) Buffer address
@@ -195,6 +195,10 @@ static int submit_user_io(char *buffer, size_t len, __u8 command) {
 		.apptag = 0,				// (__u16) ?
 		.appmask = 0				// (__u16) ?
 	};
+
+	if (len == 0) {
+		return 0;
+	}
 
 	printk(KERN_DEBUG "CharFS: submit_user_io() nblocks: %hu, addr: 0x%08x, opcode: %hhu", blocks, (unsigned int)buffer, command);
 
