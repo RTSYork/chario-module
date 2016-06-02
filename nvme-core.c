@@ -1746,11 +1746,13 @@ struct nvme_iod *nvme_map_user_pages(struct nvme_dev *dev, int write,
 
 	err = get_user_pages_fast(addr, count, 1, pages);
 	if (err < count) {
+		printk(KERN_DEBUG "NVMe: nvme_map_user_pages() get_user_pages_fast() failed (count: %d, err: %d)\n", count, err);
 		count = err;
 		err = -EFAULT;
-		printk(KERN_DEBUG "NVMe: nvme_map_user_pages() get_user_pages_fast() failed\n");
 		goto put_pages;
 	}
+
+	printk(KERN_DEBUG "NVMe: nvme_map_user_pages() get_user_pages_fast() success (count: %d)\n", count);
 
 	err = -ENOMEM;
 	iod = __nvme_alloc_iod(count, length, dev, 0, GFP_KERNEL);
