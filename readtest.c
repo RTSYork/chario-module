@@ -44,7 +44,7 @@ int main(void) {
 		printf("The received message is: '%s' (truncated)\n", buffer);
 	}
 
-	outfd = open("readtest-out", O_WRONLY | O_CREAT | O_TRUNC);
+	outfd = open("readtest-out", O_WRONLY | O_CREAT | O_TRUNC, S_IWUSR | S_IRUSR);
 	if (outfd < 0) {
 		perror("Failed to open output file");
 		return errno;

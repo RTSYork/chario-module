@@ -18,7 +18,7 @@ int main(void) {
 
 	memset(buffer, 0xff, BUFFER_LENGTH);
 
-	outfd = open("before-low", O_WRONLY | O_CREAT | O_TRUNC);
+	outfd = open("before-low", O_WRONLY | O_CREAT | O_TRUNC, S_IWUSR | S_IRUSR);
 	if (outfd < 0) {
 		perror("Failed to open output file");
 		return errno;
@@ -26,7 +26,7 @@ int main(void) {
 	write(outfd, buffer, READ_LENGTH);
 	close(outfd);
 
-	outfd = open("before-high", O_WRONLY | O_CREAT | O_TRUNC);
+	outfd = open("before-high", O_WRONLY | O_CREAT | O_TRUNC, S_IWUSR | S_IRUSR);
 	if (outfd < 0) {
 		perror("Failed to open output file");
 		return errno;
@@ -60,7 +60,7 @@ int main(void) {
 		printf("The received message is: '%s' (truncated)\n", buffer);
 	}
 
-	outfd = open("after-low", O_WRONLY | O_CREAT | O_TRUNC);
+	outfd = open("after-low", O_WRONLY | O_CREAT | O_TRUNC, S_IWUSR | S_IRUSR);
 	if (outfd < 0) {
 		perror("Failed to open output file");
 		return errno;
@@ -68,7 +68,7 @@ int main(void) {
 	write(outfd, buffer, READ_LENGTH);
 	close(outfd);
 
-	outfd = open("after-high", O_WRONLY | O_CREAT | O_TRUNC);
+	outfd = open("after-high", O_WRONLY | O_CREAT | O_TRUNC, S_IWUSR | S_IRUSR);
 	if (outfd < 0) {
 		perror("Failed to open output file");
 		return errno;
