@@ -4,31 +4,35 @@
 #include <fcntl.h>
 #include <string.h>
 #include <unistd.h>
+//#include <malloc.h>
 
-#define BUFFER_LENGTH 4096
+#define BUFFER_LENGTH 8192 // Should be a multiple of NVMe block size, as we DMA straight to it without checking
+
+char buffer[BUFFER_LENGTH];
 
 int main(void) {
-	int fd;
+	int fd, outfd;
 	ssize_t result;
 
-	char *buffer = malloc(BUFFER_LENGTH); // If this is not on the heap we get a '-14 Bad address' error
+//	char *buffer = malloc(BUFFER_LENGTH);
+//	char *buffer = memalign(4096, BUFFER_LENGTH);
 
 	printf("Starting read test...\n");
 	fd = open("/dev/charfs", O_RDONLY);
 
 	if (fd < 0) {
-		perror("Failed to open the device...");
+		perror("Failed to open the device");
 		return errno;
 	}
 
 	printf("Reading from the device...\n");
 
-	result = read(fd, buffer, BUFFER_LENGTH);        // Read the response from the LKM
+	result = read(fd, buffer, BUFFER_LENGTH);
 
 	printf("Result: %zd\n", result);
 
 	if (result < 0) {
-		perror("Failed to read the message from the device.");
+		perror("Failed to read the message from the device");
 		return errno;
 	}
 
@@ -40,7 +44,15 @@ int main(void) {
 		printf("The received message is: '%s' (truncated)\n", buffer);
 	}
 
-//	free(buffer); // Freeing here gives a 'double free or corruption' error
+	outfd = open("readtest-out", O_WRONLY | O_CREAT | O_TRUNC);
+	if (outfd < 0) {
+		perror("Failed to open output file");
+		return errno;
+	}
+	write(outfd, buffer, BUFFER_LENGTH);
+	close(outfd);
+
+//	free(buffer); // Freeing here gives a 'double free or corruption' error?
 
 	return 0;
 }

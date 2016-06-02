@@ -4,7 +4,6 @@
 #include <fcntl.h>
 #include <string.h>
 #include <unistd.h>
-#include <malloc.h>
 
 #define READ_LENGTH 8192
 #define BUFFER_LENGTH READ_LENGTH + 4096
