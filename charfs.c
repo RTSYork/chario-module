@@ -316,7 +316,12 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
 
 	result = submit_user_io(buffer, len, nvme_cmd_read);
 
-	return result;
+	if (likely(result == 0))
+		return len;
+	else if (result > 0)
+		return -EIO;
+	else
+		return result;
 }
 
 /** @brief This function is called whenever the device is being written to from user space i.e.
@@ -332,7 +337,12 @@ static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, lof
 
 	result = submit_user_io((char *)buffer, len, nvme_cmd_write);
 
-	return result;
+	if (likely(result == 0))
+		return len;
+	else if (result > 0)
+		return -EIO;
+	else
+		return result;
 }
 
 /** @brief The device release function that is called whenever the device is closed/released by
