@@ -159,18 +159,18 @@ static int submit_io_test(void) {
 		.appmask = 0			// (__u16) ?
 	};
 
-	printk(KERN_DEBUG "CharFS: submit_io_test()");
+	pr_debug("CharFS: submit_io_test()");
 
 	result = charfs_nvme_submit_io_kernel(ns, &uio);
 
-	printk(KERN_DEBUG "CharFS: submit_io_test() result: %d", result);
+	pr_debug("CharFS: submit_io_test() result: %d", result);
 
 	if (strlen(data) < 50) {
-		printk(KERN_DEBUG "CharFS: submit_io_test()   data: '%s'", data);
+		pr_debug("CharFS: submit_io_test()   data: '%s'", data);
 	}
 	else {
 		data[50] = 0;
-		printk(KERN_DEBUG "CharFS: submit_io_test()   data: '%s' (truncated)", data);
+		pr_debug("CharFS: submit_io_test()   data: '%s' (truncated)", data);
 	}
 
 	kfree(data);
@@ -204,11 +204,11 @@ static int submit_user_io(char *buffer, size_t len, loff_t offset, __u8 command)
 		return 0;
 	}
 
-	printk(KERN_DEBUG "CharFS: submit_user_io() nblocks: %hu, addr: 0x%08x, opcode: %hhu", blocks, (unsigned int)buffer, command);
+	pr_debug("CharFS: submit_user_io() nblocks: %hu, slba: %llu, addr: 0x%08x, opcode: %hhu", nblocks, slba, (unsigned)buffer, command);
 
 	result = charfs_nvme_submit_io_user(ns, &uio);
 
-	printk(KERN_DEBUG "CharFS: submit_user_io() result: %d", result);
+	pr_debug("CharFS: submit_user_io() result: %d", result);
 
 	return result;
 }

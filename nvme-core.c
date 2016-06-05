@@ -360,7 +360,7 @@ static void *nvme_finish_cmd(struct nvme_queue *nvmeq, int tag,
 	struct nvme_cmd_info *cmd = get_cmd_from_tag(nvmeq, tag);
 	void *ctx;
 
-	printk(KERN_DEBUG "NVMe: nvme_finish_cmd(), qid: %d, tag: %d\n", nvmeq->qid, tag);
+	pr_debug("NVMe: nvme_finish_cmd(), qid: %d, tag: %d\n", nvmeq->qid, tag);
 
 	if (tag >= nvmeq->q_depth) {
 		*fn = special_completion;
@@ -399,7 +399,7 @@ static int nvme_submit_cmd(struct nvme_queue *nvmeq, struct nvme_command *cmd)
 	unsigned long flags;
 	int ret;
 
-	printk(KERN_DEBUG "NVMe: nvme_submit_cmd(), qid: %d\n", nvmeq->qid);
+	pr_debug("NVMe: nvme_submit_cmd(), qid: %d\n", nvmeq->qid);
 
 	spin_lock_irqsave(&nvmeq->q_lock, flags);
 	ret = __nvme_submit_cmd(nvmeq, cmd);
@@ -776,7 +776,7 @@ static int nvme_submit_iod(struct nvme_queue *nvmeq, struct nvme_iod *iod,
 	u16 control = 0;
 	u32 dsmgmt = 0;
 
-	printk(KERN_DEBUG "NVMe: nvme_submit_iod(), qid: %d\n", nvmeq->qid);
+	pr_debug("NVMe: nvme_submit_iod(), qid: %d\n", nvmeq->qid);
 
 	if (req->cmd_flags & REQ_FUA)
 		control |= NVME_RW_FUA;
@@ -821,7 +821,7 @@ static int nvme_submit_iod(struct nvme_queue *nvmeq, struct nvme_iod *iod,
 		nvmeq->sq_tail = 0;
 	writel(nvmeq->sq_tail, nvmeq->q_db); // Writes 'nvmeq->sq_tail' to address 'nvmeq->q_db'
 
-	printk(KERN_DEBUG "NVMe: %s at slba %llu\n", (rq_data_dir(req) ? "write" : "read"), cmnd->rw.slba);
+	pr_debug("NVMe: %s at slba %llu\n", (rq_data_dir(req) ? "write" : "read"), cmnd->rw.slba);
 
 	return 0;
 }
@@ -836,7 +836,7 @@ static int nvme_queue_rq(struct blk_mq_hw_ctx *hctx,
 	struct nvme_iod *iod;
 	enum dma_data_direction dma_dir;
 
-	printk(KERN_DEBUG "NVMe: nvme_queue_rq(), qid: %d\n", nvmeq->qid);
+	pr_debug("NVMe: nvme_queue_rq(), qid: %d\n", nvmeq->qid);
 
 	/*
 	 * If formated with metadata, require the block layer provide a buffer
@@ -928,7 +928,7 @@ static int nvme_process_cq(struct nvme_queue *nvmeq)
 {
 	u16 head, phase;
 
-//	printk(KERN_DEBUG "NVMe: nvme_process_cq(), qid: %d\n", nvmeq->qid);
+//	pr_debug("NVMe: nvme_process_cq(), qid: %d\n", nvmeq->qid);
 
 	head = nvmeq->cq_head;
 	phase = nvmeq->cq_phase;
@@ -979,7 +979,7 @@ static irqreturn_t nvme_irq(int irq, void *data)
 	irqreturn_t result;
 	struct nvme_queue *nvmeq = data;
 
-	printk(KERN_DEBUG "NVMe: nvme_irq(), irq: %d\n", irq);
+	pr_debug("NVMe: nvme_irq(), irq: %d\n", irq);
 
 	spin_lock(&nvmeq->q_lock);
 	nvme_process_cq(nvmeq);
@@ -994,7 +994,7 @@ static irqreturn_t nvme_irq_check(int irq, void *data)
 	struct nvme_queue *nvmeq = data;
 	struct nvme_completion cqe = nvmeq->cqes[nvmeq->cq_head];
 
-	printk(KERN_DEBUG "NVMe: nvme_irq_check(), irq: %d\n", irq);
+	pr_debug("NVMe: nvme_irq_check(), irq: %d\n", irq);
 
 	if ((le16_to_cpu(cqe.status) & 1) != nvmeq->cq_phase)
 		return IRQ_NONE;
@@ -1027,7 +1027,7 @@ static int nvme_submit_sync_cmd(struct request *req, struct nvme_command *cmd,
 	struct nvme_cmd_info *cmd_rq = blk_mq_rq_to_pdu(req);
 	struct nvme_queue *nvmeq = cmd_rq->nvmeq;
 
-	printk(KERN_DEBUG "NVMe: nvme_submit_sync_cmd(), qid: %d\n", nvmeq->qid);
+	pr_debug("NVMe: nvme_submit_sync_cmd(), qid: %d\n", nvmeq->qid);
 
 	cmdinfo.task = current;
 	cmdinfo.status = -EINTR;
@@ -1052,7 +1052,7 @@ static int nvme_submit_async_admin_req(struct nvme_dev *dev)
 	struct nvme_cmd_info *cmd_info;
 	struct request *req;
 
-	printk(KERN_DEBUG "NVMe: nvme_submit_async_admin_req()\n");
+	pr_debug("NVMe: nvme_submit_async_admin_req()\n");
 
 	req = blk_mq_alloc_request(dev->admin_q, WRITE, GFP_ATOMIC, true);
 	if (IS_ERR(req))
@@ -1078,7 +1078,7 @@ static int nvme_submit_admin_async_cmd(struct nvme_dev *dev,
 	struct request *req;
 	struct nvme_cmd_info *cmd_rq;
 
-	printk(KERN_DEBUG "NVMe: nvme_submit_admin_async_cmd()\n");
+	pr_debug("NVMe: nvme_submit_admin_async_cmd()\n");
 
 	req = blk_mq_alloc_request(dev->admin_q, WRITE, GFP_KERNEL, false);
 	if (IS_ERR(req))
@@ -1112,7 +1112,7 @@ static int __nvme_submit_admin_cmd(struct nvme_dev *dev, struct nvme_command *cm
 int nvme_submit_admin_cmd(struct nvme_dev *dev, struct nvme_command *cmd,
 								u32 *result)
 {
-	printk(KERN_DEBUG "NVMe: nvme_submit_admin_cmd()\n");
+	pr_debug("NVMe: nvme_submit_admin_cmd()\n");
 
 	return __nvme_submit_admin_cmd(dev, cmd, result, ADMIN_TIMEOUT);
 }
@@ -1123,7 +1123,7 @@ int nvme_submit_io_cmd(struct nvme_dev *dev, struct nvme_ns *ns,
 	int res;
 	struct request *req;
 
-	printk(KERN_DEBUG "NVMe: nvme_submit_io_cmd()\n");
+	pr_debug("NVMe: nvme_submit_io_cmd()\n");
 
 	req = blk_mq_alloc_request(ns->queue, WRITE, (GFP_KERNEL|__GFP_WAIT),
 									false);
@@ -1476,7 +1476,7 @@ static void nvme_init_queue(struct nvme_queue *nvmeq, u16 qid)
 {
 	struct nvme_dev *dev = nvmeq->dev;
 
-	printk(KERN_DEBUG "NVMe: nvme_init_queue(), qid: %u\n", qid);
+	pr_debug("NVMe: nvme_init_queue(), qid: %u\n", qid);
 
 	spin_lock_irq(&nvmeq->q_lock);
 	nvmeq->sq_tail = 0;
@@ -1493,7 +1493,7 @@ static int nvme_create_queue(struct nvme_queue *nvmeq, int qid)
 	struct nvme_dev *dev = nvmeq->dev;
 	int result;
 
-	printk(KERN_DEBUG "NVMe: nvme_create_queue(), qid: %d\n", qid);
+	pr_debug("NVMe: nvme_create_queue(), qid: %d\n", qid);
 
 	nvmeq->cq_vector = qid - 1;
 	result = adapter_alloc_cq(dev, qid, nvmeq);
@@ -1548,7 +1548,7 @@ static int nvme_wait_ready(struct nvme_dev *dev, u64 cap, bool enabled)
  */
 static int nvme_disable_ctrl(struct nvme_dev *dev, u64 cap)
 {
-	printk(KERN_DEBUG "NVMe: nvme_disable_ctrl()\n");
+	pr_debug("NVMe: nvme_disable_ctrl()\n");
 
 	dev->ctrl_config &= ~NVME_CC_SHN_MASK;
 	dev->ctrl_config &= ~NVME_CC_ENABLE;
@@ -1559,7 +1559,7 @@ static int nvme_disable_ctrl(struct nvme_dev *dev, u64 cap)
 
 static int nvme_enable_ctrl(struct nvme_dev *dev, u64 cap)
 {
-	printk(KERN_DEBUG "NVMe: nvme_enable_ctrl()\n");
+	pr_debug("NVMe: nvme_enable_ctrl()\n");
 
 	dev->ctrl_config &= ~NVME_CC_SHN_MASK;
 	dev->ctrl_config |= NVME_CC_ENABLE;
@@ -1572,7 +1572,7 @@ static int nvme_shutdown_ctrl(struct nvme_dev *dev)
 {
 	unsigned long timeout;
 
-	printk(KERN_DEBUG "NVMe: nvme_shutdown_ctrl()\n");
+	pr_debug("NVMe: nvme_shutdown_ctrl()\n");
 
 	dev->ctrl_config &= ~NVME_CC_SHN_MASK;
 	dev->ctrl_config |= NVME_CC_SHN_NORMAL;
@@ -1615,7 +1615,7 @@ static struct blk_mq_ops nvme_mq_ops = {
 
 static void nvme_dev_remove_admin(struct nvme_dev *dev)
 {
-	printk(KERN_DEBUG "NVMe: nvme_dev_remove_admin()\n");
+	pr_debug("NVMe: nvme_dev_remove_admin()\n");
 
 	if (dev->admin_q && !blk_queue_dying(dev->admin_q)) {
 		blk_cleanup_queue(dev->admin_q);
@@ -1625,7 +1625,7 @@ static void nvme_dev_remove_admin(struct nvme_dev *dev)
 
 static int nvme_alloc_admin_tags(struct nvme_dev *dev)
 {
-	printk(KERN_DEBUG "NVMe: nvme_alloc_admin_tags()\n");
+	pr_debug("NVMe: nvme_alloc_admin_tags()\n");
 
 	if (!dev->admin_q) {
 		dev->admin_tagset.ops = &nvme_mq_admin_ops;
@@ -1665,7 +1665,7 @@ static int nvme_configure_admin_queue(struct nvme_dev *dev)
 	unsigned dev_page_min = NVME_CAP_MPSMIN(cap) + 12;
 	unsigned dev_page_max = NVME_CAP_MPSMAX(cap) + 12;
 
-	printk(KERN_DEBUG "NVMe: nvme_configure_admin_queue()\n");
+	pr_debug("NVMe: nvme_configure_admin_queue()\n");
 
 	if (page_shift < dev_page_min) {
 		dev_err(&dev->pci_dev->dev,
@@ -1731,7 +1731,7 @@ struct nvme_iod *nvme_map_user_pages(struct nvme_dev *dev, int write,
 	struct page **pages;
 	struct nvme_iod *iod;
 
-	printk(KERN_DEBUG "NVMe: nvme_map_user_pages(), addr: 0x%08lx, length: %u\n", addr, length);
+	pr_debug("NVMe: nvme_map_user_pages(), addr: 0x%08lx, length: %u\n", addr, length);
 
 	if (addr & 3)
 		return ERR_PTR(-EINVAL);
@@ -1746,13 +1746,13 @@ struct nvme_iod *nvme_map_user_pages(struct nvme_dev *dev, int write,
 
 	err = get_user_pages_fast(addr, count, 1, pages);
 	if (err < count) {
-		printk(KERN_DEBUG "NVMe: nvme_map_user_pages() get_user_pages_fast() failed (count: %d, err: %d)\n", count, err);
+		pr_debug("NVMe: nvme_map_user_pages() get_user_pages_fast() failed (count: %d, err: %d)\n", count, err);
 		count = err;
 		err = -EFAULT;
 		goto put_pages;
 	}
 
-	printk(KERN_DEBUG "NVMe: nvme_map_user_pages() get_user_pages_fast() success (count: %d)\n", count);
+	pr_debug("NVMe: nvme_map_user_pages() get_user_pages_fast() success (count: %d)\n", count);
 
 	err = -ENOMEM;
 	iod = __nvme_alloc_iod(count, length, dev, 0, GFP_KERNEL);
@@ -1793,7 +1793,7 @@ void nvme_unmap_user_pages(struct nvme_dev *dev, int write,
 {
 	int i;
 
-	printk(KERN_DEBUG "NVMe: nvme_unmap_user_pages()\n");
+	pr_debug("NVMe: nvme_unmap_user_pages()\n");
 
 	dma_unmap_sg(&dev->pci_dev->dev, iod->sg, iod->nents,
 				write ? DMA_TO_DEVICE : DMA_FROM_DEVICE);
@@ -1809,7 +1809,7 @@ struct nvme_iod *nvme_map_kernel_pages(struct nvme_dev *dev, int write,
 	struct scatterlist *sg;
 	struct nvme_iod *iod;
 
-	printk(KERN_DEBUG "NVMe: nvme_map_kernel_pages(), addr: 0x%08lx, length: %u\n", addr, length);
+	pr_debug("NVMe: nvme_map_kernel_pages(), addr: 0x%08lx, length: %u\n", addr, length);
 
 	if (addr & 3)
 		return ERR_PTR(-EINVAL);
@@ -1843,7 +1843,7 @@ struct nvme_iod *nvme_map_kernel_pages(struct nvme_dev *dev, int write,
 void nvme_unmap_kernel_pages(struct nvme_dev *dev, int write,
 			   struct nvme_iod *iod)
 {
-	printk(KERN_DEBUG "NVMe: nvme_unmap_kernel_pages()\n");
+	pr_debug("NVMe: nvme_unmap_kernel_pages()\n");
 
 	dma_unmap_sg(&dev->pci_dev->dev, iod->sg, iod->nents,
 		     write ? DMA_TO_DEVICE : DMA_FROM_DEVICE);
@@ -1861,7 +1861,7 @@ static int nvme_submit_io(struct nvme_ns *ns, struct nvme_user_io __user *uio)
 	void *meta = NULL;
 	void __user *metadata;
 
-	printk(KERN_DEBUG "NVMe: nvme_submit_io()\n");
+	pr_debug("NVMe: nvme_submit_io()\n");
 
 	if (copy_from_user(&io, uio, sizeof(io)))
 		return -EFAULT;
@@ -1953,10 +1953,10 @@ static int nvme_submit_io_kernel(struct nvme_ns *ns, struct nvme_user_io *uio)
 	void *meta = NULL;
 	void *metadata;
 
-	printk(KERN_DEBUG "NVMe: nvme_submit_io_kernel()\n");
+	pr_debug("NVMe: nvme_submit_io_kernel()\n");
 
 	if (memcpy(&io, uio, sizeof(io)) != &io) {
-		printk(KERN_DEBUG "NVMe: nvme_submit_io_kernel() memcpy to &io failed\n");
+		pr_debug("NVMe: nvme_submit_io_kernel() memcpy to &io failed\n");
 		return -EFAULT;
 	}
 	length = (io.nblocks + 1) << ns->lba_shift;
@@ -2001,7 +2001,7 @@ static int nvme_submit_io_kernel(struct nvme_ns *ns, struct nvme_user_io *uio)
 		}
 		if (write) {
 			if (memcpy(meta, metadata, meta_len) != meta) {
-				printk(KERN_DEBUG "NVMe: nvme_submit_io_kernel() memcpy to meta failed\n");
+				pr_debug("NVMe: nvme_submit_io_kernel() memcpy to meta failed\n");
 				status = -EFAULT;
 				goto unmap;
 			}
@@ -2029,7 +2029,7 @@ static int nvme_submit_io_kernel(struct nvme_ns *ns, struct nvme_user_io *uio)
 	if (meta) {
 		if (status == NVME_SC_SUCCESS && !write) {
 			if (memcpy(metadata, meta, meta_len) != metadata) {
-				printk(KERN_DEBUG "NVMe: nvme_submit_io_kernel() memcpy to metadata failed\n");
+				pr_debug("NVMe: nvme_submit_io_kernel() memcpy to metadata failed\n");
 				status = -EFAULT;
 			}
 		}
@@ -2050,10 +2050,10 @@ static int nvme_submit_io_user(struct nvme_ns *ns, struct nvme_user_io *uio)
 	void *meta = NULL;
 	void *metadata;
 
-	printk(KERN_DEBUG "NVMe: nvme_submit_io_user()\n");
+	pr_debug("NVMe: nvme_submit_io_user()\n");
 
 	if (memcpy(&io, uio, sizeof(io)) != &io) {
-		printk(KERN_DEBUG "NVMe: nvme_submit_io_user() memcpy to &io failed\n");
+		pr_debug("NVMe: nvme_submit_io_user() memcpy to &io failed\n");
 		return -EFAULT;
 	}
 	length = (io.nblocks + 1) << ns->lba_shift;
@@ -2098,7 +2098,7 @@ static int nvme_submit_io_user(struct nvme_ns *ns, struct nvme_user_io *uio)
 		}
 		if (write) {
 			if (memcpy(meta, metadata, meta_len) != meta) {
-				printk(KERN_DEBUG "NVMe: nvme_submit_io_user() memcpy to meta failed\n");
+				pr_debug("NVMe: nvme_submit_io_user() memcpy to meta failed\n");
 				status = -EFAULT;
 				goto unmap;
 			}
@@ -2126,7 +2126,7 @@ static int nvme_submit_io_user(struct nvme_ns *ns, struct nvme_user_io *uio)
 	if (meta) {
 		if (status == NVME_SC_SUCCESS && !write) {
 			if (memcpy(metadata, meta, meta_len) != metadata) {
-				printk(KERN_DEBUG "NVMe: nvme_submit_io_user() memcpy to metadata failed\n");
+				pr_debug("NVMe: nvme_submit_io_user() memcpy to metadata failed\n");
 				status = -EFAULT;
 			}
 		}
@@ -2144,7 +2144,7 @@ static int nvme_user_cmd(struct nvme_dev *dev, struct nvme_ns *ns,
 	struct nvme_iod *uninitialized_var(iod);
 	unsigned timeout;
 
-	printk(KERN_DEBUG "NVMe: nvme_user_cmd()\n");
+	pr_debug("NVMe: nvme_user_cmd()\n");
 
 	if (!capable(CAP_SYS_ADMIN))
 		return -EACCES;
@@ -2212,7 +2212,7 @@ static int nvme_ioctl(struct block_device *bdev, fmode_t mode, unsigned int cmd,
 {
 	struct nvme_ns *ns = bdev->bd_disk->private_data;
 
-	printk(KERN_DEBUG "NVMe: nvme_ioctl(), cmd: %u\n", cmd);
+	pr_debug("NVMe: nvme_ioctl(), cmd: %u\n", cmd);
 
 	switch (cmd) {
 	case NVME_IOCTL_ID:
@@ -2373,11 +2373,11 @@ static int nvme_kthread(void *data)
 {
 	struct nvme_dev *dev, *next;
 
-	printk(KERN_DEBUG "NVMe: nvme_kthread()\n");
+	pr_debug("NVMe: nvme_kthread()\n");
 
 	while (!kthread_should_stop()) {
 
-//		printk(KERN_DEBUG "NVMe: nvme_kthread() loop\n");
+//		pr_debug("NVMe: nvme_kthread() loop\n");
 
 		set_current_state(TASK_INTERRUPTIBLE);
 		spin_lock(&dev_list_lock);
@@ -2413,7 +2413,7 @@ static int nvme_kthread(void *data)
 		schedule_timeout(round_jiffies_relative(HZ));
 	}
 
-	printk(KERN_DEBUG "NVMe: nvme_kthread() done\n");
+	pr_debug("NVMe: nvme_kthread() done\n");
 
 	return 0;
 }
@@ -2424,7 +2424,7 @@ static void nvme_alloc_ns(struct nvme_dev *dev, unsigned nsid)
 	struct gendisk *disk;
 	int node = dev_to_node(&dev->pci_dev->dev);
 
-	printk(KERN_DEBUG "NVMe: nvme_alloc_ns(), nsid: %u\n", nsid);
+	pr_debug("NVMe: nvme_alloc_ns(), nsid: %u\n", nsid);
 
 	ns = kzalloc_node(sizeof(*ns), GFP_KERNEL, node);
 	if (!ns)
@@ -2525,7 +2525,7 @@ static int nvme_setup_io_queues(struct nvme_dev *dev)
 	struct pci_dev *pdev = dev->pci_dev;
 	int result, i, vecs, nr_io_queues, size;
 
-	printk(KERN_DEBUG "NVMe: nvme_setup_io_queues()\n");
+	pr_debug("NVMe: nvme_setup_io_queues()\n");
 
 	nr_io_queues = num_possible_cpus();
 	result = set_queue_count(dev, nr_io_queues);
@@ -3136,7 +3136,7 @@ static int nvme_dev_start(struct nvme_dev *dev)
 	int result;
 	bool start_thread = false;
 
-	printk(KERN_DEBUG "NVMe: nvme_dev_start()\n");
+	pr_debug("NVMe: nvme_dev_start()\n");
 
 	result = nvme_dev_map(dev);
 	if (result)
@@ -3260,7 +3260,7 @@ static int nvme_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	int node, result = -ENOMEM;
 	struct nvme_dev *dev;
 
-	printk(KERN_DEBUG "NVMe: nvme_probe()\n");
+	pr_debug("NVMe: nvme_probe()\n");
 
 	node = dev_to_node(&pdev->dev);
 	if (node == NUMA_NO_NODE)
@@ -3327,7 +3327,7 @@ static void nvme_async_probe(struct work_struct *work)
 	struct nvme_dev *dev = container_of(work, struct nvme_dev, probe_work);
 	int result;
 
-	printk(KERN_DEBUG "NVMe: nvme_async_probe()\n");
+	pr_debug("NVMe: nvme_async_probe()\n");
 
 	result = nvme_dev_start(dev);
 	if (result)
