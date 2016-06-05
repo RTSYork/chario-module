@@ -24,16 +24,18 @@ MODULE_DESCRIPTION("CharFS test"); ///< The description -- see modinfo
 MODULE_VERSION("0.1");            ///< A version number to inform users
 
 static int    majorNumber;                  ///< Stores the device number -- determined automatically
-static int    numberOpens = 0;              ///< Counts the number of times the device is opened
 static struct class*  charfsClass  = NULL;  ///< The device-driver class struct pointer
 static struct device* charfsDevice = NULL;  ///< The device-driver device struct pointer
 static char   attrsName[] = "attrs";
+
+static loff_t current_offset;
 
 // The prototype functions for the character driver -- must come before the struct definition
 static int     dev_open(struct inode *, struct file *);
 static int     dev_release(struct inode *, struct file *);
 static ssize_t dev_read(struct file *, char *, size_t, loff_t *);
 static ssize_t dev_write(struct file *, const char *, size_t, loff_t *);
+static loff_t  dev_llseek(struct file *filp, loff_t off, int whence);
 
 static ssize_t test_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf);
 static ssize_t test_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count);
@@ -48,6 +50,7 @@ static struct file_operations fops =
 	.read = dev_read,
 	.write = dev_write,
 	.release = dev_release,
+	.llseek = dev_llseek
 };
 
 static struct kobj_attribute test_attr = __ATTR(test, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP, test_show, test_store);
@@ -175,21 +178,22 @@ static int submit_io_test(void) {
 	return result;
 }
 
-static int submit_user_io(char *buffer, size_t len, __u8 command) {
+static int submit_user_io(char *buffer, size_t len, loff_t offset, __u8 command) {
 	struct nvme_dev *dev = charfs_nvme_get_current_dev();
 	struct nvme_ns *ns = list_first_entry(&dev->namespaces, struct nvme_ns, list);
-	__u16 blocks = (__u16)(((len - 1) >> ns->lba_shift)); // Should give number of blocks - 1
+	__u16 nblocks = (__u16)((len - 1) >> ns->lba_shift); // Should give number of blocks - 1
+	__u64 slba = (__u64)(offset >> ns->lba_shift);
 	int result;
 
 	struct nvme_user_io uio = {
 		.opcode = command,			// (__u8)  Read command
 		.flags = 0,				// (__u8)  No flags?
 		.control = 0,				// (__u16) ?
-		.nblocks = blocks,			// (__u16) Number of blocks: floor((length - 1) / lba size)
+		.nblocks = nblocks,			// (__u16) Number of blocks: floor((length - 1) / lba size)
 		.rsvd = 0,				// (__u16) ?
 		.metadata = 0,				// (__u64) ?
 		.addr = (__u64)(uintptr_t)buffer,	// (__u64) Buffer address
-		.slba = 0,				// (__u64) Block 0
+		.slba = slba,				// (__u64) Block address: floor(offset / lba size)
 		.dsmgmt = 0,				// (__u32) ?
 		.reftag = 0,				// (__u32) ?
 		.apptag = 0,				// (__u16) ?
@@ -298,8 +302,8 @@ static void __exit charfs_exit(void){
  *  @param filep A pointer to a file object (defined in linux/fs.h)
  */
 static int dev_open(struct inode *inodep, struct file *filep){
-	numberOpens++;
-	printk(KERN_INFO "CharFS: Device has been opened %d time(s)\n", numberOpens);
+	current_offset = 0;
+	printk(KERN_INFO "CharFS: Device opened\n");
 	return 0;
 }
 
@@ -314,10 +318,12 @@ static int dev_open(struct inode *inodep, struct file *filep){
 static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *offset) {
 	int result;
 
-	result = submit_user_io(buffer, len, nvme_cmd_read);
+	result = submit_user_io(buffer, len, current_offset, nvme_cmd_read);
 
-	if (likely(result == 0))
+	if (likely(result == 0)) {
+		current_offset += len;
 		return len;
+	}
 	else if (result > 0)
 		return -EIO;
 	else
@@ -335,14 +341,37 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
 static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, loff_t *offset) {
 	int result;
 
-	result = submit_user_io((char *)buffer, len, nvme_cmd_write);
+	result = submit_user_io((char *)buffer, len, current_offset, nvme_cmd_write);
 
-	if (likely(result == 0))
+	if (likely(result == 0)) {
+		current_offset += len;
 		return len;
+	}
 	else if (result > 0)
 		return -EIO;
 	else
 		return result;
+}
+
+static loff_t dev_llseek(struct file *filp, loff_t off, int whence) {
+	switch (whence) {
+		case SEEK_SET:
+			current_offset = off;
+			break;
+		case SEEK_CUR:
+			current_offset += off;
+			break;
+		case SEEK_END:
+			pr_debug("CharFS: llseek() past end of device\n");
+			return -ESPIPE;
+		default:
+			pr_debug("CharFS: llseek() invalid whence %d\n", whence);
+			return -EINVAL;
+	}
+
+	pr_debug("CharFS: llseek() by %lld to %lld\n", off, current_offset);
+
+	return current_offset;
 }
 
 /** @brief The device release function that is called whenever the device is closed/released by
