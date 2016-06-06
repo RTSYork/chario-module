@@ -86,7 +86,7 @@ static int rq_test(void) {
 	struct request *req = kmalloc(sizeof(struct request) + sizeof(struct nvme_cmd_info), GFP_KERNEL);
 
 //	if (req == NULL) {
-//		printk(KERN_ERR "CharFS: No memory to allocate request");
+//		pr_err("CharFS: No memory to allocate request");
 //		return 1;
 //	}
 
@@ -223,18 +223,18 @@ static int submit_user_io(char *buffer, size_t len, loff_t offset, __u8 command)
 static int __init charfs_init(void){
 	int result = 0;
 
-	printk(KERN_INFO "CharFS: Initializing CharFS device LKM\n");
+	pr_info("CharFS: Initializing CharFS device LKM\n");
 
 	// create the kobject sysfs entry at /sys/charfs -- probably not an ideal location!
 	charfs_kobj = kobject_create_and_add("charfs", kernel_kobj->parent); // kernel_kobj points to /sys/kernel
 	if(!charfs_kobj){
-		printk(KERN_ALERT "CharFS: failed to create kobject mapping\n");
+		pr_alert("CharFS: failed to create kobject mapping\n");
 		return -ENOMEM;
 	}
 	// add the attributes to /sys/charfs/*
 	result = sysfs_create_group(charfs_kobj, &attr_group);
 	if(result) {
-		printk(KERN_ALERT "CharFS: failed to create sysfs group\n");
+		pr_alert("CharFS: failed to create sysfs group\n");
 		kobject_put(charfs_kobj); // clean up -- remove the kobject sysfs entry
 		return result;
 	}
@@ -242,39 +242,33 @@ static int __init charfs_init(void){
 	// Try to dynamically allocate a major number for the device -- more difficult but worth it
 	majorNumber = register_chrdev(0, DEVICE_NAME, &fops);
 	if (majorNumber<0){
-		printk(KERN_ALERT "CharFS failed to register a major number\n");
+		pr_alert("CharFS failed to register a major number\n");
 		return majorNumber;
 	}
-	printk(KERN_INFO "CharFS: registered correctly with major number %d\n", majorNumber);
+	pr_info("CharFS: registered correctly with major number %d\n", majorNumber);
 
 	// Register the device class
 	charfsClass = class_create(THIS_MODULE, CLASS_NAME);
 	if (IS_ERR(charfsClass)){                // Check for error and clean up if there is
 		unregister_chrdev(majorNumber, DEVICE_NAME);
-		printk(KERN_ALERT "Failed to register device class\n");
+		pr_alert("Failed to register device class\n");
 		return PTR_ERR(charfsClass);          // Correct way to return an error on a pointer
 	}
-	printk(KERN_INFO "CharFS: device class registered correctly\n");
+	pr_info("CharFS: device class registered correctly\n");
 
 	// Register the device driver
 	charfsDevice = device_create(charfsClass, NULL, MKDEV(majorNumber, 0), NULL, DEVICE_NAME);
 	if (IS_ERR(charfsDevice)){               // Clean up if there is an error
 		class_destroy(charfsClass);           // Repeated code but the alternative is goto statements
 		unregister_chrdev(majorNumber, DEVICE_NAME);
-		printk(KERN_ALERT "Failed to create the device\n");
+		pr_alert("Failed to create the device\n");
 		return PTR_ERR(charfsDevice);
 	}
-	printk(KERN_INFO "CharFS: device class created correctly\n"); // Made it! device was initialized
+	pr_info("CharFS: device class created correctly\n"); // Made it! device was initialized
 
-
-
-
-	printk(KERN_INFO "CharFS: Initialising NVMe driver...\n");
+	pr_info("CharFS: Initialising NVMe driver...\n");
 	result = charfs_nvme_init();
-	printk(KERN_INFO "CharFS: NVMe init returned %d\n", result);
-
-
-
+	pr_info("CharFS: NVMe init returned %d\n", result);
 
 	return 0;
 }
@@ -285,7 +279,7 @@ static int __init charfs_init(void){
  */
 static void __exit charfs_exit(void){
 
-	printk(KERN_INFO "CharFS: Exiting NVMe driver...\n");
+	pr_info("CharFS: Exiting NVMe driver...\n");
 	charfs_nvme_exit();
 
 	device_destroy(charfsClass, MKDEV(majorNumber, 0));     // remove the device
@@ -293,7 +287,7 @@ static void __exit charfs_exit(void){
 	class_destroy(charfsClass);                             // remove the device class
 	unregister_chrdev(majorNumber, DEVICE_NAME);            // unregister the major number
 	kobject_put(charfs_kobj);                               // clean up -- remove the kobject sysfs entry
-	printk(KERN_INFO "CharFS: LKM exited\n");
+	pr_info("CharFS: LKM exited\n");
 }
 
 /** @brief The device open function that is called each time the device is opened
@@ -303,7 +297,7 @@ static void __exit charfs_exit(void){
  */
 static int dev_open(struct inode *inodep, struct file *filep){
 	current_offset = 0;
-	printk(KERN_INFO "CharFS: Device opened\n");
+	pr_info("CharFS: Device opened\n");
 	return 0;
 }
 
@@ -362,10 +356,10 @@ static loff_t dev_llseek(struct file *filp, loff_t off, int whence) {
 			current_offset += off;
 			break;
 		case SEEK_END:
-			pr_debug("CharFS: llseek() past end of device\n");
+			pr_warn("CharFS: llseek() past end of device\n");
 			return -ESPIPE;
 		default:
-			pr_debug("CharFS: llseek() invalid whence %d\n", whence);
+			pr_warn("CharFS: llseek() invalid whence %d\n", whence);
 			return -EINVAL;
 	}
 
@@ -380,7 +374,7 @@ static loff_t dev_llseek(struct file *filp, loff_t off, int whence) {
  *  @param filep A pointer to a file object (defined in linux/fs.h)
  */
 static int dev_release(struct inode *inodep, struct file *filep){
-	printk(KERN_INFO "CharFS: Device successfully closed\n");
+	pr_info("CharFS: Device successfully closed\n");
 	return 0;
 }
 
