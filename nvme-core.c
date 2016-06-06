@@ -12,6 +12,8 @@
  * more details.
  */
 
+//#define DEBUG 1
+
 #include "linux_includes.h"
 
 #include <linux/nvme.h>

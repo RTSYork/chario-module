@@ -2,6 +2,8 @@
  * Based on http://derekmolloy.ie/writing-a-linux-kernel-module-part-2-a-character-device/
  */
 
+//#define DEBUG 1
+
 #include "linux_includes.h"
 
 #include <linux/init.h>           // Macros used to mark up functions e.g. __init __exit
@@ -14,6 +16,7 @@
 
 #include "nvme-core.h"
 
+#define MAX_BYTES 131072 // 128k - Maximum transfer size in one NVMe request (from testing)
 
 #define  DEVICE_NAME "charfs"     ///< The device will appear at /dev/charfs using this value
 #define  CLASS_NAME  "charfs"     ///< The device class -- this is a character device driver
@@ -320,8 +323,25 @@ static int dev_open(struct inode *inodep, struct file *filep){
  */
 static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *offset) {
 	int result;
+	size_t remaining = len;
+	char *buff = buffer;
+	loff_t off = current_offset;
 
-	result = submit_user_io(buffer, len, current_offset, nvme_cmd_read);
+	while (remaining > MAX_BYTES) {
+		result = submit_user_io(buff, MAX_BYTES, off, nvme_cmd_read);
+
+		if (likely(result == 0)) {
+			remaining -= MAX_BYTES;
+			buff += MAX_BYTES;
+			off += MAX_BYTES;
+		}
+		else if (result > 0)
+			return -EIO;
+		else
+			return result;
+	}
+
+	result = submit_user_io(buff, remaining, off, nvme_cmd_read);
 
 	if (likely(result == 0)) {
 		current_offset += len;
@@ -343,8 +363,25 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
  */
 static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, loff_t *offset) {
 	int result;
+	size_t remaining = len;
+	char *buff = (char *)buffer;
+	loff_t off = current_offset;
 
-	result = submit_user_io((char *)buffer, len, current_offset, nvme_cmd_write);
+	while (remaining > MAX_BYTES) {
+		result = submit_user_io(buff, MAX_BYTES, off, nvme_cmd_write);
+
+		if (likely(result == 0)) {
+			remaining -= MAX_BYTES;
+			buff += MAX_BYTES;
+			off += MAX_BYTES;
+		}
+		else if (result > 0)
+			return -EIO;
+		else
+			return result;
+	}
+
+	result = submit_user_io(buff, remaining, off, nvme_cmd_write);
 
 	if (likely(result == 0)) {
 		current_offset += len;
