@@ -270,6 +270,15 @@ static int __init charfs_init(void){
 	result = charfs_nvme_init();
 	pr_info("CharFS: NVMe init returned %d\n", result);
 
+	if (result != 0) {
+		device_destroy(charfsClass, MKDEV(majorNumber, 0));     // remove the device
+		class_unregister(charfsClass);                          // unregister the device class
+		class_destroy(charfsClass);                             // remove the device class
+		unregister_chrdev(majorNumber, DEVICE_NAME);            // unregister the major number
+		kobject_put(charfs_kobj);                               // clean up -- remove the kobject sysfs entry
+		return result;
+	}
+
 	return 0;
 }
 
