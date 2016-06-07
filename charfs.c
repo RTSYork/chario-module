@@ -31,14 +31,12 @@ static struct class*  charfsClass  = NULL;  ///< The device-driver class struct 
 static struct device* charfsDevice = NULL;  ///< The device-driver device struct pointer
 static char   attrsName[] = "attrs";
 
-static loff_t current_offset;
-
 // The prototype functions for the character driver -- must come before the struct definition
 static int     dev_open(struct inode *, struct file *);
 static int     dev_release(struct inode *, struct file *);
 static ssize_t dev_read(struct file *, char *, size_t, loff_t *);
 static ssize_t dev_write(struct file *, const char *, size_t, loff_t *);
-static loff_t  dev_llseek(struct file *filp, loff_t off, int whence);
+static loff_t  dev_llseek(struct file *, loff_t, int);
 
 static ssize_t test_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf);
 static ssize_t test_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count);
@@ -302,37 +300,29 @@ static void __exit charfs_exit(void){
 	pr_info("CharFS: LKM exited\n");
 }
 
-/** @brief The device open function that is called each time the device is opened
- *  This will only increment the numberOpens counter in this case.
- *  @param inodep A pointer to an inode object (defined in linux/fs.h)
- *  @param filep A pointer to a file object (defined in linux/fs.h)
- */
-static int dev_open(struct inode *inodep, struct file *filep){
-	current_offset = 0;
+
+static int dev_open(struct inode *inode, struct file *filp){
 	pr_info("CharFS: Device opened\n");
 	return 0;
 }
 
-/** @brief This function is called whenever device is being read from user space i.e. data is
- *  being sent from the device to the user. In this case is uses the copy_to_user() function to
- *  send the buffer string to the user and captures any errors.
- *  @param filep A pointer to a file object (defined in linux/fs.h)
- *  @param buffer The pointer to the buffer to which this function writes the data
- *  @param len The length of the b
- *  @param offset The offset if required
- */
-static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *offset) {
+static int dev_release(struct inode *inode, struct file *filp) {
+	pr_info("CharFS: Device successfully closed\n");
+	return 0;
+}
+
+static ssize_t dev_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos) {
 	int result;
-	size_t remaining = len;
-	char *buff = buffer;
-	loff_t off = current_offset;
+	size_t remaining = count;
+	char *buffer = buf;
+	loff_t off = *f_pos;
 
 	while (remaining > MAX_BYTES) {
-		result = submit_user_io(buff, MAX_BYTES, off, nvme_cmd_read);
+		result = submit_user_io(buffer, MAX_BYTES, off, nvme_cmd_read);
 
 		if (likely(result == 0)) {
 			remaining -= MAX_BYTES;
-			buff += MAX_BYTES;
+			buffer += MAX_BYTES;
 			off += MAX_BYTES;
 		}
 		else if (result > 0)
@@ -341,11 +331,11 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
 			return result;
 	}
 
-	result = submit_user_io(buff, remaining, off, nvme_cmd_read);
+	result = submit_user_io(buffer, remaining, off, nvme_cmd_read);
 
 	if (likely(result == 0)) {
-		current_offset += len;
-		return len;
+		*f_pos += count;
+		return count;
 	}
 	else if (result > 0)
 		return -EIO;
@@ -353,26 +343,18 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
 		return result;
 }
 
-/** @brief This function is called whenever the device is being written to from user space i.e.
- *  data is sent to the device from the user. The data is copied to the message[] array in this
- *  LKM using the sprintf() function along with the length of the string.
- *  @param filep A pointer to a file object
- *  @param buffer The buffer to that contains the string to write to the device
- *  @param len The length of the array of data that is being passed in the const char buffer
- *  @param offset The offset if required
- */
-static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, loff_t *offset) {
+static ssize_t dev_write(struct file *filp, const char __user *buf, size_t count, loff_t *f_pos) {
 	int result;
-	size_t remaining = len;
-	char *buff = (char *)buffer;
-	loff_t off = current_offset;
+	size_t remaining = count;
+	char *buffer = (char *)buf;
+	loff_t off = *f_pos;
 
 	while (remaining > MAX_BYTES) {
-		result = submit_user_io(buff, MAX_BYTES, off, nvme_cmd_write);
+		result = submit_user_io(buffer, MAX_BYTES, off, nvme_cmd_write);
 
 		if (likely(result == 0)) {
 			remaining -= MAX_BYTES;
-			buff += MAX_BYTES;
+			buffer += MAX_BYTES;
 			off += MAX_BYTES;
 		}
 		else if (result > 0)
@@ -381,11 +363,11 @@ static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, lof
 			return result;
 	}
 
-	result = submit_user_io(buff, remaining, off, nvme_cmd_write);
+	result = submit_user_io(buffer, remaining, off, nvme_cmd_write);
 
 	if (likely(result == 0)) {
-		current_offset += len;
-		return len;
+		*f_pos += count;
+		return count;
 	}
 	else if (result > 0)
 		return -EIO;
@@ -394,12 +376,14 @@ static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, lof
 }
 
 static loff_t dev_llseek(struct file *filp, loff_t off, int whence) {
+	loff_t newpos;
+
 	switch (whence) {
 		case SEEK_SET:
-			current_offset = off;
+			newpos = off;
 			break;
 		case SEEK_CUR:
-			current_offset += off;
+			newpos = filp->f_pos + off;
 			break;
 		case SEEK_END:
 			pr_warn("CharFS: llseek() past end of device\n");
@@ -409,19 +393,15 @@ static loff_t dev_llseek(struct file *filp, loff_t off, int whence) {
 			return -EINVAL;
 	}
 
-	pr_debug("CharFS: llseek() by %lld to %lld\n", off, current_offset);
+	if (newpos < 0) {
+		pr_warn("CharFS: llseek() before start of device\n");
+		return -EINVAL;
+	}
 
-	return current_offset;
-}
+	pr_debug("CharFS: llseek() by %lld to %lld\n", off, filp->f_pos);
 
-/** @brief The device release function that is called whenever the device is closed/released by
- *  the userspace program
- *  @param inodep A pointer to an inode object (defined in linux/fs.h)
- *  @param filep A pointer to a file object (defined in linux/fs.h)
- */
-static int dev_release(struct inode *inodep, struct file *filep){
-	pr_info("CharFS: Device successfully closed\n");
-	return 0;
+	filp->f_pos = newpos;
+	return newpos;
 }
 
 
