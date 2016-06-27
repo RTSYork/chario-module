@@ -16,8 +16,6 @@
 
 #include "nvme-core.h"
 
-#define MAX_BYTES 131072 // 128k - Maximum transfer size in one NVMe request (from testing)
-
 #define  DEVICE_NAME "charfs"     ///< The device will appear at /dev/charfs using this value
 #define  CLASS_NAME  "charfs"     ///< The device class -- this is a character device driver
 
@@ -313,25 +311,8 @@ static int dev_release(struct inode *inode, struct file *filp) {
 
 static ssize_t dev_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos) {
 	int result;
-	size_t remaining = count;
-	char *buffer = buf;
-	loff_t off = *f_pos;
 
-	while (remaining > MAX_BYTES) {
-		result = submit_user_io(buffer, MAX_BYTES, off, nvme_cmd_read);
-
-		if (likely(result == 0)) {
-			remaining -= MAX_BYTES;
-			buffer += MAX_BYTES;
-			off += MAX_BYTES;
-		}
-		else if (result > 0)
-			return -EIO;
-		else
-			return result;
-	}
-
-	result = submit_user_io(buffer, remaining, off, nvme_cmd_read);
+	result = submit_user_io(buf, count, *f_pos, nvme_cmd_read);
 
 	if (likely(result == 0)) {
 		*f_pos += count;
@@ -345,25 +326,8 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t count, loff_
 
 static ssize_t dev_write(struct file *filp, const char __user *buf, size_t count, loff_t *f_pos) {
 	int result;
-	size_t remaining = count;
-	char *buffer = (char *)buf;
-	loff_t off = *f_pos;
 
-	while (remaining > MAX_BYTES) {
-		result = submit_user_io(buffer, MAX_BYTES, off, nvme_cmd_write);
-
-		if (likely(result == 0)) {
-			remaining -= MAX_BYTES;
-			buffer += MAX_BYTES;
-			off += MAX_BYTES;
-		}
-		else if (result > 0)
-			return -EIO;
-		else
-			return result;
-	}
-
-	result = submit_user_io(buffer, remaining, off, nvme_cmd_write);
+	result = submit_user_io((char *)buf, count, *f_pos, nvme_cmd_write);
 
 	if (likely(result == 0)) {
 		*f_pos += count;

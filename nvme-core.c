@@ -663,8 +663,10 @@ int nvme_setup_prps(struct nvme_dev *dev, struct nvme_iod *iod, int total_len,
 	int nprps, i;
 
 	length -= (page_size - offset);
-	if (length <= 0)
+	if (length <= 0) {
+		pr_debug("NVMe: nvme_setup_prps() first return, sg = 0x%08x, dma_addr = 0x%08llx\n", (u32)sg, dma_addr);
 		return total_len;
+	}
 
 	dma_len -= (page_size - offset);
 	if (dma_len) {
@@ -677,6 +679,7 @@ int nvme_setup_prps(struct nvme_dev *dev, struct nvme_iod *iod, int total_len,
 
 	if (length <= page_size) {
 		iod->first_dma = dma_addr;
+		pr_debug("NVMe: nvme_setup_prps() second return, sg = 0x%08x, dma_addr = 0x%08llx\n", (u32)sg, dma_addr);
 		return total_len;
 	}
 
@@ -684,15 +687,18 @@ int nvme_setup_prps(struct nvme_dev *dev, struct nvme_iod *iod, int total_len,
 	if (nprps <= (256 / 8)) {
 		pool = dev->prp_small_pool;
 		iod->npages = 0;
+		pr_debug("NVMe: nvme_setup_prps() using small pool for DMA\n");
 	} else {
 		pool = dev->prp_page_pool;
 		iod->npages = 1;
+		pr_debug("NVMe: nvme_setup_prps() using page pool for DMA\n");
 	}
 
 	prp_list = dma_pool_alloc(pool, gfp, &prp_dma);
 	if (!prp_list) {
 		iod->first_dma = dma_addr;
 		iod->npages = -1;
+		pr_debug("NVMe: nvme_setup_prps() third return, sg = 0x%08x, dma_addr = 0x%08llx\n", (u32)sg, dma_addr);
 		return (total_len - length) + page_size;
 	}
 	list[0] = prp_list;
@@ -701,9 +707,13 @@ int nvme_setup_prps(struct nvme_dev *dev, struct nvme_iod *iod, int total_len,
 	for (;;) {
 		if (i == page_size >> 3) {
 			__le64 *old_prp_list = prp_list;
+			pr_debug("NVMe: nvme_setup_prps() (i == page_size >> 3)\n");
 			prp_list = dma_pool_alloc(pool, gfp, &prp_dma);
-			if (!prp_list)
+			if (!prp_list) {
+				pr_debug("NVMe: nvme_setup_prps() fourth return, sg = 0x%08x, dma_addr = 0x%08llx\n",
+					 (u32) sg, dma_addr);
 				return total_len - length;
+			}
 			list[iod->npages++] = prp_list;
 			prp_list[0] = old_prp_list[i - 1];
 			old_prp_list[i - 1] = cpu_to_le64(prp_dma);
@@ -723,6 +733,8 @@ int nvme_setup_prps(struct nvme_dev *dev, struct nvme_iod *iod, int total_len,
 		dma_len = sg_dma_len(sg);
 	}
 
+	pr_debug("NVMe: nvme_setup_prps() iod->npages = %d, iod->first_dma = 0x%08x\n", iod->npages, iod->first_dma);
+	pr_debug("NVMe: nvme_setup_prps() final return, sg = 0x%08x, dma_addr = 0x%08llx\n", (u32)sg, dma_addr);
 	return total_len;
 }
 
@@ -1125,7 +1137,7 @@ int nvme_submit_io_cmd(struct nvme_dev *dev, struct nvme_ns *ns,
 	int res;
 	struct request *req;
 
-	pr_debug("NVMe: nvme_submit_io_cmd()\n");
+	pr_debug("NVMe: nvme_submit_io_cmd(), slba: %llu, length: %hu, prp1: 0x%08llx, prp2: 0x%08llx\n", cmd->rw.slba, cmd->rw.length, cmd->rw.prp1, cmd->rw.prp2);
 
 	req = blk_mq_alloc_request(ns->queue, WRITE, (GFP_KERNEL|__GFP_WAIT),
 									false);
@@ -1677,8 +1689,7 @@ static int nvme_configure_admin_queue(struct nvme_dev *dev)
 		return -ENODEV;
 	}
 	if (page_shift > dev_page_max) {
-		dev_info(&dev->pci_dev->dev,
-				"Device maximum page size (%u) smaller than "
+		pr_debug("NVMe: Device maximum page size (%u) smaller than "
 				"host (%u); enabling work-around\n",
 				1 << dev_page_max, 1 << page_shift);
 		page_shift = dev_page_max;
@@ -2051,6 +2062,12 @@ static int nvme_submit_io_user(struct nvme_ns *ns, struct nvme_user_io *uio)
 	dma_addr_t meta_dma = 0;
 	void *meta = NULL;
 	void *metadata;
+	__u16 remaining_blocks;
+	__u64 current_slba;
+	dma_addr_t current_buf_offset;
+	struct scatterlist *next_sg;
+	dma_addr_t prp_list;
+	int i;
 
 	pr_debug("NVMe: nvme_submit_io_user()\n");
 
@@ -2107,21 +2124,73 @@ static int nvme_submit_io_user(struct nvme_ns *ns, struct nvme_user_io *uio)
 		}
 	}
 
+	remaining_blocks = io.nblocks;
+	current_slba = io.slba;
+	current_buf_offset = 0;
+	next_sg = iod->sg;
+	prp_list = iod->first_dma;
+
+	// Loop through transfers until we have 32 blocks (128KiB) or less to transfer
+	while (remaining_blocks >= REQ_MAX_BLOCKS) {
+		pr_debug("NVMe: nvme_submit_io_user() in loop, flags: %02x, remaining_blocks: %hu\n", io.flags, remaining_blocks);
+
+		memset(&c, 0, sizeof(c));
+		c.rw.opcode = io.opcode;
+		c.rw.flags = io.flags;
+		c.rw.nsid = cpu_to_le32(ns->ns_id);
+		c.rw.slba = cpu_to_le64(current_slba);
+		c.rw.length = cpu_to_le16(REQ_MAX_BLOCKS - 1);
+		c.rw.control = cpu_to_le16(io.control);
+		c.rw.dsmgmt = cpu_to_le32(io.dsmgmt);
+		c.rw.reftag = cpu_to_le32(io.reftag);
+		c.rw.apptag = cpu_to_le16(io.apptag);
+		c.rw.appmask = cpu_to_le16(io.appmask);
+		c.rw.prp1 = cpu_to_le64(sg_dma_address(next_sg));
+		c.rw.prp2 = cpu_to_le64(prp_list);
+		c.rw.metadata = cpu_to_le64(meta_dma);
+		status = nvme_submit_io_cmd(dev, ns, &c, NULL);
+
+		pr_debug("NVMe: nvme_submit_io_user() status: %i\n", status);
+
+		if (likely(status == NVME_SC_SUCCESS)) {
+			remaining_blocks -= REQ_MAX_BLOCKS;
+			current_slba += REQ_MAX_BLOCKS;
+			// Move REQ_MAX_BLOCKS forward in the PRP list (64-bit entries)
+			prp_list += (REQ_MAX_BLOCKS * 8);
+			// Skip past the SG items for the blocks we've just transferred
+			// Might be possible to optimise this using the PRP list (as we know the offset)
+			for (i = 0; i < REQ_MAX_BLOCKS; i++)
+				next_sg = sg_next(next_sg);
+		}
+		else
+			goto unmap;
+	}
+
+	pr_debug("NVMe: nvme_submit_io_user() flags: %02x, remaining_blocks: %hu\n", io.flags, remaining_blocks);
+
 	memset(&c, 0, sizeof(c));
 	c.rw.opcode = io.opcode;
 	c.rw.flags = io.flags;
 	c.rw.nsid = cpu_to_le32(ns->ns_id);
-	c.rw.slba = cpu_to_le64(io.slba);
-	c.rw.length = cpu_to_le16(io.nblocks);
+	c.rw.slba = cpu_to_le64(current_slba);
+	c.rw.length = cpu_to_le16(remaining_blocks);
 	c.rw.control = cpu_to_le16(io.control);
 	c.rw.dsmgmt = cpu_to_le32(io.dsmgmt);
 	c.rw.reftag = cpu_to_le32(io.reftag);
 	c.rw.apptag = cpu_to_le16(io.apptag);
 	c.rw.appmask = cpu_to_le16(io.appmask);
-	c.rw.prp1 = cpu_to_le64(sg_dma_address(iod->sg));
-	c.rw.prp2 = cpu_to_le64(iod->first_dma);
+	c.rw.prp1 = cpu_to_le64(sg_dma_address(next_sg));
+	// Deal with the case when we're only getting two blocks (but >32 blocks in total),
+	// so PRP2 should point to the DMA address rather than the PRP list
+	if (unlikely(remaining_blocks == 1))
+		c.rw.prp2 = cpu_to_le64(sg_dma_address(sg_next(next_sg)));
+	else
+		c.rw.prp2 = cpu_to_le64(prp_list);
 	c.rw.metadata = cpu_to_le64(meta_dma);
 	status = nvme_submit_io_cmd(dev, ns, &c, NULL);
+
+	pr_debug("NVMe: nvme_submit_io_user() status: %i\n", status);
+
 	unmap:
 	nvme_unmap_user_pages(dev, write, iod);
 	nvme_free_iod(dev, iod);
