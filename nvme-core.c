@@ -671,7 +671,9 @@ int nvme_setup_prps(struct nvme_dev *dev, struct nvme_iod *iod, int total_len,
 	dma_len -= (page_size - offset);
 	if (dma_len) {
 		dma_addr += (page_size - offset);
+		pr_debug("NVMe: nvme_setup_prps() if(dma_len)\n");
 	} else {
+		pr_debug("NVMe: nvme_setup_prps() if(!dma_len)\n");
 		sg = sg_next(sg);
 		dma_addr = sg_dma_address(sg);
 		dma_len = sg_dma_len(sg);
@@ -733,8 +735,8 @@ int nvme_setup_prps(struct nvme_dev *dev, struct nvme_iod *iod, int total_len,
 		dma_len = sg_dma_len(sg);
 	}
 
-	pr_debug("NVMe: nvme_setup_prps() iod->npages = %d, iod->first_dma = 0x%08x\n", iod->npages, iod->first_dma);
-	pr_debug("NVMe: nvme_setup_prps() final return, sg = 0x%08x, dma_addr = 0x%08llx\n", (u32)sg, dma_addr);
+	pr_debug("NVMe: nvme_setup_prps() iod->npages = %d\n", iod->npages);
+	pr_debug("NVMe: nvme_setup_prps() final return, sg_dma_address(sg_next(iod->sg)) = 0x%08x, list[0][0] = 0x%08llx\n", sg_dma_address(sg_next(iod->sg)), list[0][0]);
 	return total_len;
 }
 
@@ -2064,10 +2066,10 @@ static int nvme_submit_io_user(struct nvme_ns *ns, struct nvme_user_io *uio)
 	void *metadata;
 	__u16 remaining_blocks;
 	__u64 current_slba;
-	dma_addr_t current_buf_offset;
-	struct scatterlist *next_sg;
-	dma_addr_t prp_list;
-	int i;
+	dma_addr_t prp1;
+	dma_addr_t prp2;
+	int prp1_offset;
+	__le64 **prp_list;
 
 	pr_debug("NVMe: nvme_submit_io_user()\n");
 
@@ -2126,9 +2128,10 @@ static int nvme_submit_io_user(struct nvme_ns *ns, struct nvme_user_io *uio)
 
 	remaining_blocks = io.nblocks;
 	current_slba = io.slba;
-	current_buf_offset = 0;
-	next_sg = iod->sg;
-	prp_list = iod->first_dma;
+	prp_list = iod_list(iod);
+	prp1_offset = -1;
+	prp1 = sg_dma_address(iod->sg);
+	prp2 = iod->first_dma;
 
 	// Loop through transfers until we have 32 blocks (128KiB) or less to transfer
 	while (remaining_blocks >= REQ_MAX_BLOCKS) {
@@ -2145,8 +2148,8 @@ static int nvme_submit_io_user(struct nvme_ns *ns, struct nvme_user_io *uio)
 		c.rw.reftag = cpu_to_le32(io.reftag);
 		c.rw.apptag = cpu_to_le16(io.apptag);
 		c.rw.appmask = cpu_to_le16(io.appmask);
-		c.rw.prp1 = cpu_to_le64(sg_dma_address(next_sg));
-		c.rw.prp2 = cpu_to_le64(prp_list);
+		c.rw.prp1 = cpu_to_le64(prp1);
+		c.rw.prp2 = cpu_to_le64(prp2);
 		c.rw.metadata = cpu_to_le64(meta_dma);
 		status = nvme_submit_io_cmd(dev, ns, &c, NULL);
 
@@ -2155,18 +2158,24 @@ static int nvme_submit_io_user(struct nvme_ns *ns, struct nvme_user_io *uio)
 		if (likely(status == NVME_SC_SUCCESS)) {
 			remaining_blocks -= REQ_MAX_BLOCKS;
 			current_slba += REQ_MAX_BLOCKS;
-			// Move REQ_MAX_BLOCKS forward in the PRP list (64-bit entries)
-			prp_list += (REQ_MAX_BLOCKS * 8);
-			// Skip past the SG items for the blocks we've just transferred
-			// Might be possible to optimise this using the PRP list (as we know the offset)
-			for (i = 0; i < REQ_MAX_BLOCKS; i++)
-				next_sg = sg_next(next_sg);
+
+			// Move PRP1 forward by REQ_MAX_BLOCKS items in the PRP list
+			prp1_offset += REQ_MAX_BLOCKS;
+			prp1 = (dma_addr_t)prp_list[0][prp1_offset];
+
+			// Move PRP2 pointer forward by REQ_MAX_BLOCKS in the PRP list (64-bit entries)
+			prp2 += (REQ_MAX_BLOCKS * 8);
 		}
 		else
 			goto unmap;
 	}
 
 	pr_debug("NVMe: nvme_submit_io_user() flags: %02x, remaining_blocks: %hu\n", io.flags, remaining_blocks);
+
+	// Deal with the case when we're only getting two blocks, but > 32 blocks in total,
+	// so PRP2 should point to the DMA address rather than the PRP list
+	if (unlikely(remaining_blocks == 1 && io.nblocks > 1))
+		prp2 = (dma_addr_t)prp_list[0][prp1_offset + 1];
 
 	memset(&c, 0, sizeof(c));
 	c.rw.opcode = io.opcode;
@@ -2179,13 +2188,8 @@ static int nvme_submit_io_user(struct nvme_ns *ns, struct nvme_user_io *uio)
 	c.rw.reftag = cpu_to_le32(io.reftag);
 	c.rw.apptag = cpu_to_le16(io.apptag);
 	c.rw.appmask = cpu_to_le16(io.appmask);
-	c.rw.prp1 = cpu_to_le64(sg_dma_address(next_sg));
-	// Deal with the case when we're only getting two blocks (but >32 blocks in total),
-	// so PRP2 should point to the DMA address rather than the PRP list
-	if (unlikely(remaining_blocks == 1))
-		c.rw.prp2 = cpu_to_le64(sg_dma_address(sg_next(next_sg)));
-	else
-		c.rw.prp2 = cpu_to_le64(prp_list);
+	c.rw.prp1 = cpu_to_le64(prp1);
+	c.rw.prp2 = cpu_to_le64(prp2);
 	c.rw.metadata = cpu_to_le64(meta_dma);
 	status = nvme_submit_io_cmd(dev, ns, &c, NULL);
 
