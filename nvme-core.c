@@ -2068,6 +2068,7 @@ static int nvme_submit_io_user(struct nvme_ns *ns, struct nvme_user_io *uio)
 	__u64 current_slba;
 	dma_addr_t prp1;
 	dma_addr_t prp2;
+	int remaining_pages, page_count;
 	int prp1_offset;
 	__le64 **prp_list;
 
@@ -2128,6 +2129,8 @@ static int nvme_submit_io_user(struct nvme_ns *ns, struct nvme_user_io *uio)
 
 	remaining_blocks = io.nblocks;
 	current_slba = io.slba;
+	remaining_pages = iod->npages;
+	page_count = 0;
 	prp_list = iod_list(iod);
 	prp1_offset = -1;
 	prp1 = sg_dma_address(iod->sg);
@@ -2135,7 +2138,7 @@ static int nvme_submit_io_user(struct nvme_ns *ns, struct nvme_user_io *uio)
 
 	// Loop through transfers until we have 32 blocks (128KiB) or less to transfer
 	while (remaining_blocks >= REQ_MAX_BLOCKS) {
-		pr_debug("NVMe: nvme_submit_io_user() in loop, flags: %02x, remaining_blocks: %hu\n", io.flags, remaining_blocks);
+		pr_debug("NVMe: nvme_submit_io_user() remaining_blocks: %hu, remaining_pages: %d, prp1_offset: %d\n", remaining_blocks, remaining_pages, prp1_offset);
 
 		memset(&c, 0, sizeof(c));
 		c.rw.opcode = io.opcode;
@@ -2159,23 +2162,33 @@ static int nvme_submit_io_user(struct nvme_ns *ns, struct nvme_user_io *uio)
 			remaining_blocks -= REQ_MAX_BLOCKS;
 			current_slba += REQ_MAX_BLOCKS;
 
-			// Move PRP1 forward by REQ_MAX_BLOCKS items in the PRP list
-			prp1_offset += REQ_MAX_BLOCKS;
-			prp1 = (dma_addr_t)prp_list[0][prp1_offset];
+			// Check if we need to move to next PRP list page
+			if (unlikely(prp1_offset == 479 && remaining_pages > 1)) {
+				prp2 = (dma_addr_t)prp_list[page_count][511] + 8;
+				page_count++;
+				prp1_offset = 0;
+				prp1 = (dma_addr_t)prp_list[page_count][0];
+				remaining_pages--;
+			}
+			else {
+				// Move PRP1 forward by REQ_MAX_BLOCKS items in the PRP list
+				prp1_offset += REQ_MAX_BLOCKS;
+				prp1 = (dma_addr_t)prp_list[page_count][prp1_offset];
 
-			// Move PRP2 pointer forward by REQ_MAX_BLOCKS in the PRP list (64-bit entries)
-			prp2 += (REQ_MAX_BLOCKS * 8);
+				// Move PRP2 pointer forward by REQ_MAX_BLOCKS in the PRP list (64-bit entries)
+				prp2 += (REQ_MAX_BLOCKS * 8);
+			}
 		}
 		else
 			goto unmap;
 	}
 
-	pr_debug("NVMe: nvme_submit_io_user() flags: %02x, remaining_blocks: %hu\n", io.flags, remaining_blocks);
+	pr_debug("NVMe: nvme_submit_io_user() remaining_blocks: %hu, remaining_pages: %d, prp1_offset: %d\n", remaining_blocks, remaining_pages, prp1_offset);
 
 	// Deal with the case when we're only getting two blocks, but > 32 blocks in total,
 	// so PRP2 should point to the DMA address rather than the PRP list
 	if (unlikely(remaining_blocks == 1 && io.nblocks > 1))
-		prp2 = (dma_addr_t)prp_list[0][prp1_offset + 1];
+		prp2 = (dma_addr_t)prp_list[page_count][prp1_offset + 1];
 
 	memset(&c, 0, sizeof(c));
 	c.rw.opcode = io.opcode;
