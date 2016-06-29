@@ -15,6 +15,7 @@
 #include <asm/uaccess.h>          // Required for the copy to user function
 
 #include "nvme-core.h"
+#include "charfs.h"
 
 #define MAX_BYTES 4194304 // 4MiB - Maximum transfer size supported in single user NVMe request
 
@@ -37,6 +38,7 @@ static int     dev_release(struct inode *, struct file *);
 static ssize_t dev_read(struct file *, char *, size_t, loff_t *);
 static ssize_t dev_write(struct file *, const char *, size_t, loff_t *);
 static loff_t  dev_llseek(struct file *, loff_t, int);
+static long    dev_ioctl(struct file *, unsigned int, unsigned long);
 
 static ssize_t test_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf);
 static ssize_t test_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count);
@@ -51,7 +53,8 @@ static struct file_operations fops =
 	.read = dev_read,
 	.write = dev_write,
 	.release = dev_release,
-	.llseek = dev_llseek
+	.llseek = dev_llseek,
+	.unlocked_ioctl = dev_ioctl
 };
 
 static struct kobj_attribute test_attr = __ATTR(test, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP, test_show, test_store);
@@ -212,6 +215,75 @@ static int submit_user_io(char *buffer, size_t len, loff_t offset, __u8 command)
 	pr_debug("CharFS: submit_user_io() result: %d", result);
 
 	return result;
+}
+
+
+static int __submit_phys_io(dma_addr_t address, size_t len, loff_t offset, __u8 command) {
+	struct nvme_dev *dev = charfs_nvme_get_current_dev();
+	struct nvme_ns *ns = list_first_entry(&dev->namespaces, struct nvme_ns, list);
+	__u16 nblocks = (__u16)((len - 1) >> ns->lba_shift); // Should give number of blocks - 1
+	__u64 slba = (__u64)(offset >> ns->lba_shift);
+	int result;
+
+	struct nvme_user_io uio = {
+		.opcode = command,			// (__u8)  Read command
+		.flags = 0,				// (__u8)  No flags?
+		.control = 0,				// (__u16) ?
+		.nblocks = nblocks,			// (__u16) Number of blocks: floor((length - 1) / lba size)
+		.rsvd = 0,				// (__u16) ?
+		.metadata = 0,				// (__u64) ?
+		.addr = (__u64)address,			// (__u64) Buffer address
+		.slba = slba,				// (__u64) Block address: floor(offset / lba size)
+		.dsmgmt = 0,				// (__u32) ?
+		.reftag = 0,				// (__u32) ?
+		.apptag = 0,				// (__u16) ?
+		.appmask = 0				// (__u16) ?
+	};
+
+	if (len == 0) {
+		return 0;
+	}
+
+	pr_debug("CharFS: __submit_phys_io() nblocks: %hu, slba: %llu, addr: 0x%08x, opcode: %hhu", nblocks, slba, address, command);
+
+	result = charfs_nvme_submit_io_phys(ns, &uio);
+
+	pr_debug("CharFS: __submit_phys_io() result: %d", result);
+
+	return result;
+}
+
+
+static ssize_t submit_phys_io(struct file *filp, struct charfs_phys_io * io, __u8 command) {
+	int result;
+	size_t remaining = io->length;
+	dma_addr_t address = (dma_addr_t)io->address;
+	loff_t off = filp->f_pos;
+
+	while (remaining > MAX_BYTES) {
+		result = __submit_phys_io(address, MAX_BYTES, off, command);
+
+		if (likely(result == 0)) {
+			remaining -= MAX_BYTES;
+			address += MAX_BYTES;
+			off += MAX_BYTES;
+		}
+		else if (result > 0)
+			return -EIO;
+		else
+			return result;
+	}
+
+	result = __submit_phys_io(address, remaining, off, command);
+
+	if (likely(result == 0)) {
+		filp->f_pos += io->length;
+		return io->length;
+	}
+	else if (result > 0)
+		return -EIO;
+	else
+		return result;
 }
 
 
@@ -402,6 +474,17 @@ static loff_t dev_llseek(struct file *filp, loff_t off, int whence) {
 
 	filp->f_pos = newpos;
 	return newpos;
+}
+
+static long dev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
+	switch (cmd) {
+		case CHARFS_IOCTL_READ_PHYS:
+			return submit_phys_io(filp, (struct charfs_phys_io *)arg, nvme_cmd_read);
+		case CHARFS_IOCTL_WRITE_PHYS:
+			return submit_phys_io(filp, (struct charfs_phys_io *)arg, nvme_cmd_write);
+		default:
+			return -EINVAL;
+	}
 }
 
 
