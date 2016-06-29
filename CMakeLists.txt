@@ -33,6 +33,8 @@ add_executable(chardevtest chardevtest.c)
 add_executable(readtest readtest.c)
 add_executable(readtest2 readtest2.c)
 add_executable(writetest writetest.c)
+add_executable(ocmreadtest ocmreadtest.c)
+add_executable(ocmwritetest ocmwritetest.c)
 
 
 # Target to SCP to and make on Zynq
