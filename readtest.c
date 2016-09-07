@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -8,7 +9,7 @@
 
 #define BUFFER_LENGTH 8192 // Should be a multiple of NVMe block size, as we DMA straight to it without checking
 
-char buffer[BUFFER_LENGTH];
+char buffer[BUFFER_LENGTH] __attribute__((aligned(0x1000)));
 
 int main(void) {
 	int fd, outfd;
