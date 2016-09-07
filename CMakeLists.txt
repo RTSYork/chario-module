@@ -45,3 +45,12 @@ add_custom_target(
         COMMAND rsync -uv *.c *.h Makefile zynq-mitx:/root/charfs
         COMMAND ssh zynq-mitx 'cd /root/charfs && make'
 )
+
+# Target to SCP to and make on Dave
+add_custom_target(
+        dave ALL
+        SOURCES ${SOURCES}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMAND rsync -uv *.c *.h Makefile dave:/home/russell/charfs
+        COMMAND ssh dave 'cd /home/russell/charfs && make'
+)
