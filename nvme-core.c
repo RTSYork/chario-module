@@ -46,6 +46,7 @@
 #include <scsi/sg.h>
 #include <asm-generic/io-64-nonatomic-lo-hi.h>
 
+#include <linux/profile_timers.h>
 #include "nvme-core.h"
 
 static struct nvme_dev *current_dev;
@@ -402,6 +403,8 @@ static int nvme_submit_cmd(struct nvme_queue *nvmeq, struct nvme_command *cmd)
 	int ret;
 
 	pr_debug("NVMe: nvme_submit_cmd(), qid: %d\n", nvmeq->qid);
+
+	PROF_TAG(0x16);
 
 	spin_lock_irqsave(&nvmeq->q_lock, flags);
 	ret = __nvme_submit_cmd(nvmeq, cmd);
