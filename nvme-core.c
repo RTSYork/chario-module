@@ -3933,38 +3933,38 @@ static void __exit nvme_exit(void)
 //module_exit(nvme_exit);
 
 
-int charfs_nvme_init(void) {
+int chario_nvme_init(void) {
 	return nvme_init();
 }
 
-void charfs_nvme_exit(void) {
+void chario_nvme_exit(void) {
 	nvme_exit();
 }
 
-int charfs_nvme_submit_iod(struct nvme_queue *nvmeq, struct nvme_iod *iod, struct nvme_ns *ns) {
+int chario_nvme_submit_iod(struct nvme_queue *nvmeq, struct nvme_iod *iod, struct nvme_ns *ns) {
 	return nvme_submit_iod(nvmeq, iod, ns);
 }
 
-int charfs_nvme_queue_rq(struct blk_mq_hw_ctx *hctx, const struct blk_mq_queue_data *bd) {
+int chario_nvme_queue_rq(struct blk_mq_hw_ctx *hctx, const struct blk_mq_queue_data *bd) {
 	return nvme_queue_rq(hctx, bd);
 }
 
-int charfs_nvme_submit_cmd(struct nvme_queue *nvmeq, struct nvme_command *cmd) {
+int chario_nvme_submit_cmd(struct nvme_queue *nvmeq, struct nvme_command *cmd) {
 	return nvme_submit_cmd(nvmeq, cmd);
 }
 
-int charfs_nvme_submit_io_kernel(struct nvme_ns *ns, struct nvme_user_io *uio) {
+int chario_nvme_submit_io_kernel(struct nvme_ns *ns, struct nvme_user_io *uio) {
 	return nvme_submit_io_kernel(ns, uio);
 }
 
-int charfs_nvme_submit_io_user(struct nvme_ns *ns, struct nvme_user_io *uio) {
+int chario_nvme_submit_io_user(struct nvme_ns *ns, struct nvme_user_io *uio) {
 	return nvme_submit_io_user(ns, uio);
 }
 
-int charfs_nvme_submit_io_phys(struct nvme_ns *ns, struct nvme_user_io *uio) {
+int chario_nvme_submit_io_phys(struct nvme_ns *ns, struct nvme_user_io *uio) {
 	return nvme_submit_io_phys(ns, uio);
 }
 
-struct nvme_dev *charfs_nvme_get_current_dev() {
+struct nvme_dev *chario_nvme_get_current_dev() {
 	return current_dev;
 }

@@ -34,7 +34,7 @@ int main(void) {
 	write(outfd, buffer + READ_LENGTH, BUFFER_LENGTH - READ_LENGTH);
 	close(outfd);
 
-	fd = open("/dev/charfs", O_RDONLY);
+	fd = open("/dev/chardisk0", O_RDONLY);
 
 	if (fd < 0) {
 		perror("Failed to open the device");

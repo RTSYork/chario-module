@@ -2,7 +2,7 @@
 
 dd if=/dev/urandom of=randomdata bs=10M count=1
 
-dd if=randomdata of=/dev/charfs bs=4k
+dd if=randomdata of=/dev/chardisk0 bs=4k
 
 # SIZE=128k; dd if=randomdata of=randomdata$SIZE bs=$SIZE count=1
 # SIZE=132k; dd if=randomdata of=randomdata$SIZE bs=$SIZE count=1

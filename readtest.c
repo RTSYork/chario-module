@@ -19,7 +19,7 @@ int main(void) {
 //	char *buffer = memalign(4096, BUFFER_LENGTH);
 
 	printf("Starting read test...\n");
-	fd = open("/dev/charfs", O_RDONLY);
+	fd = open("/dev/chardisk0", O_RDONLY);
 
 	if (fd < 0) {
 		perror("Failed to open the device");

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0)
-project(charfs-module C)
+project(chario-module C)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu11 -Wstrict-prototypes -Wmissing-prototypes -Wall -Wextra")
 set(CMAKE_C_COMPILER "gcc")
@@ -15,7 +15,7 @@ IF(UNIX)
 ENDIF(UNIX)
 
 
-set(SOURCES charfs.c nvme-core.c nvme-scsi.c)
+set(SOURCES chario.c nvme-core.c nvme-scsi.c)
 
 
 # Fix include directories
@@ -28,7 +28,7 @@ set(INCLUDE_DIRECTORIES ${CMAKE_SOURCE_DIR}/include/uapi/)
 set(INCLUDE_DIRECTORIES ${CMAKE_SOURCE_DIR}/arch/arm/include/)
 set(INCLUDE_DIRECTORIES ${CMAKE_SOURCE_DIR}/arch/arm/include/uapi/)
 add_definitions(-D__CLION__)
-add_executable(charfs ${SOURCES})
+add_executable(chario ${SOURCES})
 add_executable(chardevtest chardevtest.c)
 add_executable(readtest readtest.c)
 add_executable(readtest2 readtest2.c)
@@ -44,8 +44,8 @@ add_custom_target(
         zynq-mitx ALL
         SOURCES ${SOURCES}
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        COMMAND rsync -uv *.c *.h Makefile zynq-mitx:/root/charfs
-        COMMAND ssh zynq-mitx 'cd /root/charfs && make'
+        COMMAND rsync -uv *.c *.h Makefile zynq-mitx:/root/chario
+        COMMAND ssh zynq-mitx 'cd /root/chario && make'
 )
 
 # Target to SCP to and make on Dave
@@ -53,6 +53,6 @@ add_custom_target(
         dave ALL
         SOURCES ${SOURCES}
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        COMMAND rsync -uv *.c *.h Makefile dave:/home/russell/charfs
-        COMMAND ssh dave 'cd /home/russell/charfs && make'
+        COMMAND rsync -uv *.c *.h Makefile dave:/home/russell/chario
+        COMMAND ssh dave 'cd /home/russell/chario && make'
 )
