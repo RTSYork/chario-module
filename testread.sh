@@ -9,6 +9,6 @@ SIZE=$1
 
 dd if=randomdata of=randomdata$SIZE bs=$SIZE count=1
 
-dd if=/dev/charfs of=charfs-out-$SIZE bs=$SIZE count=1
+dd if=/dev/chardisk0 of=chario-out-$SIZE bs=$SIZE count=1
 
-diff randomdata$SIZE charfs-out-$SIZE
+diff randomdata$SIZE chario-out-$SIZE

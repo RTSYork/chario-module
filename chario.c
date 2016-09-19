@@ -15,21 +15,21 @@
 #include <asm/uaccess.h>          // Required for the copy to user function
 
 #include "nvme-core.h"
-#include "charfs.h"
+#include "chario.h"
 
 #define MAX_BYTES 4194304 // 4MiB - Maximum transfer size supported in single user NVMe request
 
-#define  DEVICE_NAME "charfs"     ///< The device will appear at /dev/charfs using this value
-#define  CLASS_NAME  "charfs"     ///< The device class -- this is a character device driver
+#define  DEVICE_NAME "chardisk0"     ///< The device will appear at /dev/chardisk0 using this value
+#define  CLASS_NAME  "chario"     ///< The device class -- this is a character device driver
 
 MODULE_LICENSE("GPL");            ///< The license type -- this affects available functionality
 MODULE_AUTHOR("Russell Joyce");   ///< The author -- visible when you use modinfo
-MODULE_DESCRIPTION("CharFS test"); ///< The description -- see modinfo
+MODULE_DESCRIPTION("CharIO test"); ///< The description -- see modinfo
 MODULE_VERSION("0.1");            ///< A version number to inform users
 
 static int    majorNumber;                  ///< Stores the device number -- determined automatically
-static struct class*  charfsClass  = NULL;  ///< The device-driver class struct pointer
-static struct device* charfsDevice = NULL;  ///< The device-driver device struct pointer
+static struct class*  charioClass  = NULL;  ///< The device-driver class struct pointer
+static struct device* charioDevice = NULL;  ///< The device-driver device struct pointer
 static char   attrsName[] = "attrs";
 
 // The prototype functions for the character driver -- must come before the struct definition
@@ -59,22 +59,22 @@ static struct file_operations fops =
 
 static struct kobj_attribute test_attr = __ATTR(test, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP, test_show, test_store);
 
-static struct attribute *charfs_attrs[] = {
+static struct attribute *chario_attrs[] = {
 	&test_attr.attr,
 	NULL,
 };
 
 static struct attribute_group attr_group = {
 	.name  = attrsName,
-	.attrs = charfs_attrs,
+	.attrs = chario_attrs,
 };
 
-static struct kobject *charfs_kobj;
+static struct kobject *chario_kobj;
 
 /*
 static int rq_test(void) {
 
-	struct nvme_dev *dev = charfs_nvme_get_current_dev();
+	struct nvme_dev *dev = chario_nvme_get_current_dev();
 	struct nvme_ns *ns = list_first_entry(&dev->namespaces, struct nvme_ns, list);
 	struct nvme_queue *queue = dev->queues[1];
 
@@ -90,7 +90,7 @@ static int rq_test(void) {
 	struct request *req = kmalloc(sizeof(struct request) + sizeof(struct nvme_cmd_info), GFP_KERNEL);
 
 //	if (req == NULL) {
-//		pr_err("CharFS: No memory to allocate request");
+//		pr_err("CharIO: No memory to allocate request");
 //		return 1;
 //	}
 
@@ -107,12 +107,12 @@ static int rq_test(void) {
 	};
 
 
-	return charfs_nvme_queue_rq(&hctx, &bd);
+	return chario_nvme_queue_rq(&hctx, &bd);
 }
 */
 /*
 static int submit_cmd_test(void) {
-	struct nvme_dev *dev = charfs_nvme_get_current_dev();
+	struct nvme_dev *dev = chario_nvme_get_current_dev();
 	struct nvme_queue *queue = dev->queues[0];
 
 	struct nvme_rw_command rw_command = {
@@ -137,12 +137,12 @@ static int submit_cmd_test(void) {
 			.rw = rw_command
 	};
 
-	return charfs_nvme_submit_cmd(queue, cmd);
+	return chario_nvme_submit_cmd(queue, cmd);
 }
 */
 
 static int submit_io_test(void) {
-	struct nvme_dev *dev = charfs_nvme_get_current_dev();
+	struct nvme_dev *dev = chario_nvme_get_current_dev();
 	struct nvme_ns *ns = list_first_entry(&dev->namespaces, struct nvme_ns, list);
 	int result;
 
@@ -163,18 +163,18 @@ static int submit_io_test(void) {
 		.appmask = 0			// (__u16) ?
 	};
 
-	pr_debug("CharFS: submit_io_test()");
+	pr_debug("CharIO: submit_io_test()");
 
-	result = charfs_nvme_submit_io_kernel(ns, &uio);
+	result = chario_nvme_submit_io_kernel(ns, &uio);
 
-	pr_debug("CharFS: submit_io_test() result: %d", result);
+	pr_debug("CharIO: submit_io_test() result: %d", result);
 
 	if (strlen(data) < 50) {
-		pr_debug("CharFS: submit_io_test()   data: '%s'", data);
+		pr_debug("CharIO: submit_io_test()   data: '%s'", data);
 	}
 	else {
 		data[50] = 0;
-		pr_debug("CharFS: submit_io_test()   data: '%s' (truncated)", data);
+		pr_debug("CharIO: submit_io_test()   data: '%s' (truncated)", data);
 	}
 
 	kfree(data);
@@ -183,7 +183,7 @@ static int submit_io_test(void) {
 }
 
 static int submit_user_io(char *buffer, size_t len, loff_t offset, __u8 command) {
-	struct nvme_dev *dev = charfs_nvme_get_current_dev();
+	struct nvme_dev *dev = chario_nvme_get_current_dev();
 	struct nvme_ns *ns = list_first_entry(&dev->namespaces, struct nvme_ns, list);
 	__u16 nblocks = (__u16)((len - 1) >> ns->lba_shift); // Should give number of blocks - 1
 	__u64 slba = (__u64)(offset >> ns->lba_shift);
@@ -208,18 +208,18 @@ static int submit_user_io(char *buffer, size_t len, loff_t offset, __u8 command)
 		return 0;
 	}
 
-	pr_debug("CharFS: submit_user_io() nblocks: %hu, slba: %llu, addr: 0x%08x, opcode: %hhu", nblocks, slba, (unsigned)buffer, command);
+	pr_debug("CharIO: submit_user_io() nblocks: %hu, slba: %llu, addr: 0x%08x, opcode: %hhu", nblocks, slba, (unsigned)buffer, command);
 
-	result = charfs_nvme_submit_io_user(ns, &uio);
+	result = chario_nvme_submit_io_user(ns, &uio);
 
-	pr_debug("CharFS: submit_user_io() result: %d", result);
+	pr_debug("CharIO: submit_user_io() result: %d", result);
 
 	return result;
 }
 
 
 static int __submit_phys_io(dma_addr_t address, size_t len, loff_t offset, __u8 command) {
-	struct nvme_dev *dev = charfs_nvme_get_current_dev();
+	struct nvme_dev *dev = chario_nvme_get_current_dev();
 	struct nvme_ns *ns = list_first_entry(&dev->namespaces, struct nvme_ns, list);
 	__u16 nblocks = (__u16)((len - 1) >> ns->lba_shift); // Should give number of blocks - 1
 	__u64 slba = (__u64)(offset >> ns->lba_shift);
@@ -244,17 +244,17 @@ static int __submit_phys_io(dma_addr_t address, size_t len, loff_t offset, __u8 
 		return 0;
 	}
 
-	pr_debug("CharFS: __submit_phys_io() nblocks: %hu, slba: %llu, addr: 0x%08x, opcode: %hhu", nblocks, slba, address, command);
+	pr_debug("CharIO: __submit_phys_io() nblocks: %hu, slba: %llu, addr: 0x%08x, opcode: %hhu", nblocks, slba, address, command);
 
-	result = charfs_nvme_submit_io_phys(ns, &uio);
+	result = chario_nvme_submit_io_phys(ns, &uio);
 
-	pr_debug("CharFS: __submit_phys_io() result: %d", result);
+	pr_debug("CharIO: __submit_phys_io() result: %d", result);
 
 	return result;
 }
 
 
-static ssize_t submit_phys_io(struct file *filp, struct charfs_phys_io * io, __u8 command) {
+static ssize_t submit_phys_io(struct file *filp, struct chario_phys_io * io, __u8 command) {
 	int result;
 	size_t remaining = io->length;
 	dma_addr_t address = (dma_addr_t)io->address;
@@ -293,62 +293,62 @@ static ssize_t submit_phys_io(struct file *filp, struct charfs_phys_io * io, __u
  *  time and that it can be discarded and its memory freed up after that point.
  *  @return returns 0 if successful
  */
-static int __init charfs_init(void){
+static int __init chario_init(void){
 	int result = 0;
 
-	pr_info("CharFS: Initializing CharFS device LKM\n");
+	pr_info("CharIO: Initializing CharIO device LKM\n");
 
-	// create the kobject sysfs entry at /sys/charfs -- probably not an ideal location!
-	charfs_kobj = kobject_create_and_add("charfs", kernel_kobj->parent); // kernel_kobj points to /sys/kernel
-	if(!charfs_kobj){
-		pr_alert("CharFS: failed to create kobject mapping\n");
+	// create the kobject sysfs entry at /sys/chario -- probably not an ideal location!
+	chario_kobj = kobject_create_and_add("chario", kernel_kobj->parent); // kernel_kobj points to /sys/kernel
+	if(!chario_kobj){
+		pr_alert("CharIO: failed to create kobject mapping\n");
 		return -ENOMEM;
 	}
-	// add the attributes to /sys/charfs/*
-	result = sysfs_create_group(charfs_kobj, &attr_group);
+	// add the attributes to /sys/chario/*
+	result = sysfs_create_group(chario_kobj, &attr_group);
 	if(result) {
-		pr_alert("CharFS: failed to create sysfs group\n");
-		kobject_put(charfs_kobj); // clean up -- remove the kobject sysfs entry
+		pr_alert("CharIO: failed to create sysfs group\n");
+		kobject_put(chario_kobj); // clean up -- remove the kobject sysfs entry
 		return result;
 	}
 
 	// Try to dynamically allocate a major number for the device -- more difficult but worth it
 	majorNumber = register_chrdev(0, DEVICE_NAME, &fops);
 	if (majorNumber<0){
-		pr_alert("CharFS failed to register a major number\n");
+		pr_alert("CharIO failed to register a major number\n");
 		return majorNumber;
 	}
-	pr_info("CharFS: registered correctly with major number %d\n", majorNumber);
+	pr_info("CharIO: registered correctly with major number %d\n", majorNumber);
 
 	// Register the device class
-	charfsClass = class_create(THIS_MODULE, CLASS_NAME);
-	if (IS_ERR(charfsClass)){                // Check for error and clean up if there is
+	charioClass = class_create(THIS_MODULE, CLASS_NAME);
+	if (IS_ERR(charioClass)){                // Check for error and clean up if there is
 		unregister_chrdev(majorNumber, DEVICE_NAME);
 		pr_alert("Failed to register device class\n");
-		return PTR_ERR(charfsClass);          // Correct way to return an error on a pointer
+		return PTR_ERR(charioClass);          // Correct way to return an error on a pointer
 	}
-	pr_info("CharFS: device class registered correctly\n");
+	pr_info("CharIO: device class registered correctly\n");
 
 	// Register the device driver
-	charfsDevice = device_create(charfsClass, NULL, MKDEV(majorNumber, 0), NULL, DEVICE_NAME);
-	if (IS_ERR(charfsDevice)){               // Clean up if there is an error
-		class_destroy(charfsClass);           // Repeated code but the alternative is goto statements
+	charioDevice = device_create(charioClass, NULL, MKDEV(majorNumber, 0), NULL, DEVICE_NAME);
+	if (IS_ERR(charioDevice)){               // Clean up if there is an error
+		class_destroy(charioClass);           // Repeated code but the alternative is goto statements
 		unregister_chrdev(majorNumber, DEVICE_NAME);
 		pr_alert("Failed to create the device\n");
-		return PTR_ERR(charfsDevice);
+		return PTR_ERR(charioDevice);
 	}
-	pr_info("CharFS: device class created correctly\n"); // Made it! device was initialized
+	pr_info("CharIO: device class created correctly\n"); // Made it! device was initialized
 
-	pr_info("CharFS: Initialising NVMe driver...\n");
-	result = charfs_nvme_init();
-	pr_info("CharFS: NVMe init returned %d\n", result);
+	pr_info("CharIO: Initialising NVMe driver...\n");
+	result = chario_nvme_init();
+	pr_info("CharIO: NVMe init returned %d\n", result);
 
 	if (result != 0) {
-		device_destroy(charfsClass, MKDEV(majorNumber, 0));     // remove the device
-		class_unregister(charfsClass);                          // unregister the device class
-		class_destroy(charfsClass);                             // remove the device class
+		device_destroy(charioClass, MKDEV(majorNumber, 0));     // remove the device
+		class_unregister(charioClass);                          // unregister the device class
+		class_destroy(charioClass);                             // remove the device class
 		unregister_chrdev(majorNumber, DEVICE_NAME);            // unregister the major number
-		kobject_put(charfs_kobj);                               // clean up -- remove the kobject sysfs entry
+		kobject_put(chario_kobj);                               // clean up -- remove the kobject sysfs entry
 		return result;
 	}
 
@@ -359,27 +359,27 @@ static int __init charfs_init(void){
  *  Similar to the initialization function, it is static. The __exit macro notifies that if this
  *  code is used for a built-in driver (not a LKM) that this function is not required.
  */
-static void __exit charfs_exit(void){
+static void __exit chario_exit(void){
 
-	pr_info("CharFS: Exiting NVMe driver...\n");
-	charfs_nvme_exit();
+	pr_info("CharIO: Exiting NVMe driver...\n");
+	chario_nvme_exit();
 
-	device_destroy(charfsClass, MKDEV(majorNumber, 0));     // remove the device
-	class_unregister(charfsClass);                          // unregister the device class
-	class_destroy(charfsClass);                             // remove the device class
+	device_destroy(charioClass, MKDEV(majorNumber, 0));     // remove the device
+	class_unregister(charioClass);                          // unregister the device class
+	class_destroy(charioClass);                             // remove the device class
 	unregister_chrdev(majorNumber, DEVICE_NAME);            // unregister the major number
-	kobject_put(charfs_kobj);                               // clean up -- remove the kobject sysfs entry
-	pr_info("CharFS: LKM exited\n");
+	kobject_put(chario_kobj);                               // clean up -- remove the kobject sysfs entry
+	pr_info("CharIO: LKM exited\n");
 }
 
 
 static int dev_open(struct inode *inode, struct file *filp){
-	pr_info("CharFS: Device opened\n");
+	pr_info("CharIO: Device opened\n");
 	return 0;
 }
 
 static int dev_release(struct inode *inode, struct file *filp) {
-	pr_info("CharFS: Device successfully closed\n");
+	pr_info("CharIO: Device successfully closed\n");
 	return 0;
 }
 
@@ -458,19 +458,19 @@ static loff_t dev_llseek(struct file *filp, loff_t off, int whence) {
 			newpos = filp->f_pos + off;
 			break;
 		case SEEK_END:
-			pr_warn("CharFS: llseek() past end of device\n");
+			pr_warn("CharIO: llseek() past end of device\n");
 			return -ESPIPE;
 		default:
-			pr_warn("CharFS: llseek() invalid whence %d\n", whence);
+			pr_warn("CharIO: llseek() invalid whence %d\n", whence);
 			return -EINVAL;
 	}
 
 	if (newpos < 0) {
-		pr_warn("CharFS: llseek() before start of device\n");
+		pr_warn("CharIO: llseek() before start of device\n");
 		return -EINVAL;
 	}
 
-	pr_debug("CharFS: llseek() by %lld to %lld\n", off, filp->f_pos);
+	pr_debug("CharIO: llseek() by %lld to %lld\n", off, filp->f_pos);
 
 	filp->f_pos = newpos;
 	return newpos;
@@ -478,10 +478,10 @@ static loff_t dev_llseek(struct file *filp, loff_t off, int whence) {
 
 static long dev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) {
 	switch (cmd) {
-		case CHARFS_IOCTL_READ_PHYS:
-			return submit_phys_io(filp, (struct charfs_phys_io *)arg, nvme_cmd_read);
-		case CHARFS_IOCTL_WRITE_PHYS:
-			return submit_phys_io(filp, (struct charfs_phys_io *)arg, nvme_cmd_write);
+		case CHARIO_IOCTL_READ_PHYS:
+			return submit_phys_io(filp, (struct chario_phys_io *)arg, nvme_cmd_read);
+		case CHARIO_IOCTL_WRITE_PHYS:
+			return submit_phys_io(filp, (struct chario_phys_io *)arg, nvme_cmd_write);
 		default:
 			return -EINVAL;
 	}
@@ -501,5 +501,5 @@ static ssize_t test_store(struct kobject *kobj, struct kobj_attribute *attr, con
  *  identify the initialization function at insertion time and the cleanup function (as
  *  listed above)
  */
-module_init(charfs_init);
-module_exit(charfs_exit);
+module_init(chario_init);
+module_exit(chario_exit);

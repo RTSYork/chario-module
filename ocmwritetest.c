@@ -9,7 +9,7 @@
 #include <sys/ioctl.h>
 #include <linux/types.h>
 
-#include "charfs.h"
+#include "chario.h"
 
 //#define BUFFER_LENGTH 8192 // Should be a multiple of NVMe block size, as we DMA straight to it without checking
 #define OCM_SIZE 0x40000
@@ -51,7 +51,7 @@ int main(void) {
 		return 1;
 	}
 
-	fd = open("/dev/charfs", O_RDWR);
+	fd = open("/dev/chardisk0", O_RDWR);
 
 	if (fd < 0) {
 		perror("Failed to open the device");
@@ -60,12 +60,12 @@ int main(void) {
 
 	printf("Reading from the device...\n");
 
-	struct charfs_phys_io io = {
+	struct chario_phys_io io = {
 		.address = OCM_START,
 		.length = OCM_SIZE
 	};
 
-	result = ioctl(fd, CHARFS_IOCTL_WRITE_PHYS, &io);
+	result = ioctl(fd, CHARIO_IOCTL_WRITE_PHYS, &io);
 
 	printf("Result: %zd\n", result);
 
