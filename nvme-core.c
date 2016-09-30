@@ -394,6 +394,8 @@ static int __nvme_submit_cmd(struct nvme_queue *nvmeq, struct nvme_command *cmd)
 	writel(tail, nvmeq->q_db);
 	nvmeq->sq_tail = tail;
 
+	PROF_TAG(((uint32_t)(cmd->rw.slba) << 8) | 0x17);
+
 	return 0;
 }
 
@@ -404,7 +406,7 @@ static int nvme_submit_cmd(struct nvme_queue *nvmeq, struct nvme_command *cmd)
 
 	pr_debug("NVMe: nvme_submit_cmd(), qid: %d\n", nvmeq->qid);
 
-	PROF_TAG(0x16);
+	// PROF_TAG(((uint32_t)(cmd->rw.slba) << 8) | 0x16);
 
 	spin_lock_irqsave(&nvmeq->q_lock, flags);
 	ret = __nvme_submit_cmd(nvmeq, cmd);
