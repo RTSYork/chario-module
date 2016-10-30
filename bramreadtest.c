@@ -37,14 +37,14 @@ int main(void) {
 
 	printf("Starting read test...\n");
 
-	mfd = open("/dev/mem", O_RDONLY | O_SYNC);
+	mfd = open("/dev/mem", O_RDWR | O_SYNC);
 	if (mfd == -1) {
 		fprintf(stderr, "Can't open /dev/mem");
 		cleanup();
 		return 1;
 	}
 
-	bram = mmap(NULL, BRAM_SIZE, PROT_READ, MAP_SHARED, mfd, BRAM_START);
+	bram = mmap(NULL, BRAM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, mfd, BRAM_START);
 	if (bram == MAP_FAILED) {
 		perror("Can't map BRAM memory");
 		cleanup();
