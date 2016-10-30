@@ -57,3 +57,12 @@ add_custom_target(
         COMMAND rsync -uv *.c *.h Makefile dave:/home/russell/chario
         COMMAND ssh dave 'cd /home/russell/chario && make'
 )
+
+# Target to SCP to and make libchario on Zynq
+add_custom_target(
+        libchario-zynq ALL
+        SOURCES libchario/libchario.c libchario/libchario-test.c
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/libchario
+        COMMAND rsync -ruv CMakeLists.txt *.c *.h zynq-mitx:/root/chario/libchario
+        COMMAND ssh zynq-mitx 'cd /root/chario/libchario && make'
+)
