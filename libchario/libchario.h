@@ -12,7 +12,7 @@
 
 struct chario_task {
     int id;
-    struct chario_blocks_range *ranges;
+    struct list_head ranges;
 };
 
 struct chario_blocks_range {
@@ -24,6 +24,8 @@ struct chario_blocks_range {
 
 
 int chario_init_device(void);
+
+int chario_init_task(struct chario_task *task, int id);
 
 int chario_add_range_to_task(struct chario_task *task, size_t size, off_t offset);
 

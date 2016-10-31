@@ -8,9 +8,9 @@ int main(int argc, char *argv[]) {
 
 	chario_init_device();
 
-	struct chario_task task = {
-		.id = 0
-	};
+	struct chario_task task;
+
+	chario_init_task(&task, 0);
 
 	chario_add_range_to_task(&task, 1, 0);
 	chario_add_range_to_task(&task, 2, 50);
