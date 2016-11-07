@@ -38,6 +38,9 @@ add_executable(ocmwritetest ocmwritetest.c)
 add_executable(bramreadtest bramreadtest.c)
 add_executable(bramwritetest bramwritetest.c)
 add_executable(bramtest bramtest.c)
+add_executable(ddrreadtest ddrreadtest.c)
+add_executable(ddrwritetest ddrwritetest.c)
+add_executable(ddrtest ddrtest.c)
 
 
 # Target to SCP to and make on Zynq
