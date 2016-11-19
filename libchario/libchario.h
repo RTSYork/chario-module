@@ -2,6 +2,7 @@
 #define CHARIO_LIBCHARIO_H
 
 #include <stddef.h>
+#include <stdint.h>
 #include <sys/types.h>
 #include "list.h"
 
@@ -26,7 +27,7 @@ struct chario_blocks_range {
 };
 
 
-char *chario_init_device(void);
+uint64_t *chario_init_device(void);
 int chario_close_device(void);
 
 int chario_init_task(struct chario_task *task, int id);
@@ -37,7 +38,7 @@ int chario_load_blocks_for_task(struct chario_task *task);
 
 int chario_flush_blocks_for_task(struct chario_task *task);
 
-char *buffer_for_range(struct chario_blocks_range *range);
+uint64_t *buffer_for_range(struct chario_blocks_range *range);
 
 
 #if defined(LIBCHARIO_DBG)
