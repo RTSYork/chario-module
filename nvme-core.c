@@ -3726,6 +3726,9 @@ static int nvme_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	}
 	get_device(dev->device);
 
+	// Make DMA accesses cache coherent when using the Zynq ACP (doesn't work)
+	//set_dma_ops(&pdev->dev, &arm_coherent_dma_ops);
+
 	INIT_LIST_HEAD(&dev->node);
 	INIT_WORK(&dev->probe_work, nvme_async_probe);
 	schedule_work(&dev->probe_work);
