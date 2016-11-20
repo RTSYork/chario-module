@@ -37,6 +37,11 @@ add_executable(ocmreadtest ocmreadtest.c)
 add_executable(ocmwritetest ocmwritetest.c)
 add_executable(bramreadtest bramreadtest.c)
 add_executable(bramwritetest bramwritetest.c)
+add_executable(bramtest bramtest.c)
+add_executable(ddrreadtest ddrreadtest.c)
+add_executable(ddrwritetest ddrwritetest.c)
+add_executable(ddrtest ddrtest.c)
+add_executable(acptest acptest.c)
 
 
 # Target to SCP to and make on Zynq
@@ -55,4 +60,13 @@ add_custom_target(
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         COMMAND rsync -uv *.c *.h Makefile dave:/home/russell/chario
         COMMAND ssh dave 'cd /home/russell/chario && make'
+)
+
+# Target to SCP to and make libchario on Zynq
+add_custom_target(
+        libchario-zynq ALL
+        SOURCES libchario/libchario.c libchario/libchario-test.c
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/libchario
+        COMMAND rsync -ruv CMakeLists.txt *.c *.h zynq-mitx:/root/chario/libchario
+        COMMAND ssh zynq-mitx 'cd /root/chario/libchario && make'
 )

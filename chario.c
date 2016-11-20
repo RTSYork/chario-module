@@ -374,12 +374,12 @@ static void __exit chario_exit(void){
 
 
 static int dev_open(struct inode *inode, struct file *filp){
-	pr_info("CharIO: Device opened\n");
+	pr_debug("CharIO: Device opened\n");
 	return 0;
 }
 
 static int dev_release(struct inode *inode, struct file *filp) {
-	pr_info("CharIO: Device successfully closed\n");
+	pr_debug("CharIO: Device successfully closed\n");
 	return 0;
 }
 

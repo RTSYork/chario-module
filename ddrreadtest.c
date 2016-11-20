@@ -12,18 +12,18 @@
 #include "chario.h"
 
 //#define BUFFER_LENGTH 8192 // Should be a multiple of NVMe block size, as we DMA straight to it without checking
-#define BRAM_SIZE 0x200000
-#define BRAM_START 0x60000000
+#define DDR_SIZE 0x20000000
+#define DDR_START 0x20000000
 
-static char in_buf[BRAM_SIZE] __attribute__((aligned(0x1000)));
-static char out_buf[BRAM_SIZE] __attribute__((aligned(0x1000)));
+static char in_buf[DDR_SIZE/4] __attribute__((aligned(0x1000)));
+static char out_buf[DDR_SIZE/4] __attribute__((aligned(0x1000)));
 
-char *bram;
+char *ddr;
 int mfd;
 
 void cleanup() {
 	printf("Cleaning up...\n");
-	munmap(bram, BRAM_SIZE);
+	munmap(ddr, DDR_SIZE);
 	close(mfd);
 }
 
@@ -44,9 +44,9 @@ int main(void) {
 		return 1;
 	}
 
-	bram = mmap(NULL, BRAM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, mfd, BRAM_START);
-	if (bram == MAP_FAILED) {
-		perror("Can't map BRAM memory");
+	ddr = mmap(NULL, DDR_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, mfd, DDR_START);
+	if (ddr == MAP_FAILED) {
+		perror("Can't map DDR memory");
 		cleanup();
 		return 1;
 	}
@@ -61,8 +61,8 @@ int main(void) {
 	printf("Reading from the device...\n");
 
 	struct chario_phys_io io = {
-		.address = BRAM_START,
-		.length = BRAM_SIZE
+		.address = DDR_START,
+		.length = DDR_SIZE
 	};
 
 	result = ioctl(fd, CHARIO_IOCTL_READ_PHYS, &io);
@@ -75,28 +75,28 @@ int main(void) {
 	}
 
 	lseek(fd, 0, SEEK_SET);
-	read(fd, in_buf, BRAM_SIZE); // Read actual data from device
-	memcpy(out_buf, bram, BRAM_SIZE); // Copy BRAM to buffer
+	read(fd, in_buf, DDR_SIZE/4); // Read actual data from device
+	memcpy(out_buf, ddr, DDR_SIZE/4); // Copy DDR to buffer
 
 	close(fd);
 
-	munmap(bram, BRAM_SIZE);
+	munmap(ddr, DDR_SIZE);
 	close(mfd);
 
-	infd = open("bramreadtest-in", O_WRONLY | O_CREAT | O_TRUNC, S_IWUSR | S_IRUSR);
+	infd = open("ddrreadtest-in", O_WRONLY | O_CREAT | O_TRUNC, S_IWUSR | S_IRUSR);
 	if (infd < 0) {
 		perror("Failed to open output file 1");
 		return errno;
 	}
-	write(infd, in_buf, BRAM_SIZE);
+	write(infd, in_buf, DDR_SIZE/4);
 	close(infd);
 
-	outfd = open("bramreadtest-out", O_WRONLY | O_CREAT | O_TRUNC, S_IWUSR | S_IRUSR);
+	outfd = open("ddrreadtest-out", O_WRONLY | O_CREAT | O_TRUNC, S_IWUSR | S_IRUSR);
 	if (outfd < 0) {
 		perror("Failed to open output file 1");
 		return errno;
 	}
-	write(outfd, out_buf, BRAM_SIZE);
+	write(outfd, out_buf, DDR_SIZE/4);
 	close(outfd);
 
 //	free(buffer); // Freeing here gives a 'double free or corruption' error?
