@@ -123,6 +123,8 @@ struct nvme_queue {
 	u8 cqe_seen;
 	struct async_cmd_info cmdinfo;
 	struct blk_mq_hw_ctx *hctx;
+	struct nvme_cmd_info *chario_cmds[32];
+	int next_chario_tag;
 };
 
 /*
@@ -242,6 +244,8 @@ static int nvme_init_request(void *data, struct request *req,
 	struct nvme_cmd_info *cmd = blk_mq_rq_to_pdu(req);
 	struct nvme_queue *nvmeq = dev->queues[hctx_idx + 1];
 
+//	pr_debug("NVMe: nvme_init_request() hctx_idx: %u, rq_idx: %u", hctx_idx, rq_idx);
+
 	BUG_ON(!nvmeq);
 	cmd->nvmeq = nvmeq;
 	return 0;
@@ -359,8 +363,17 @@ static inline struct nvme_cmd_info *get_cmd_from_tag(struct nvme_queue *nvmeq,
 static void *nvme_finish_cmd(struct nvme_queue *nvmeq, int tag,
 						nvme_completion_fn *fn)
 {
-	struct nvme_cmd_info *cmd = get_cmd_from_tag(nvmeq, tag);
+	struct nvme_cmd_info *cmd;
 	void *ctx;
+
+	if (nvmeq->qid == 0) {
+		// Admin queue, so use blk_mq
+		cmd = get_cmd_from_tag(nvmeq, tag);
+	}
+	else {
+		// Get from our special array of commands
+		cmd = nvmeq->chario_cmds[tag];
+	}
 
 	pr_debug("NVMe: nvme_finish_cmd(), qid: %d, tag: %d\n", nvmeq->qid, tag);
 
@@ -402,6 +415,19 @@ static int nvme_submit_cmd(struct nvme_queue *nvmeq, struct nvme_command *cmd)
 	int ret;
 
 	pr_debug("NVMe: nvme_submit_cmd(), qid: %d\n", nvmeq->qid);
+
+	spin_lock_irqsave(&nvmeq->q_lock, flags);
+	ret = __nvme_submit_cmd(nvmeq, cmd);
+	spin_unlock_irqrestore(&nvmeq->q_lock, flags);
+	return ret;
+}
+
+static int nvme_submit_cmd_chario(struct nvme_queue *nvmeq, struct nvme_command *cmd)
+{
+	unsigned long flags;
+	int ret;
+
+	pr_debug("NVMe: nvme_submit_cmd_chario(), qid: %d, tag: %d\n", nvmeq->qid, cmd->common.command_id);
 
 	spin_lock_irqsave(&nvmeq->q_lock, flags);
 	ret = __nvme_submit_cmd(nvmeq, cmd);
@@ -1202,6 +1228,53 @@ static int nvme_submit_sync_cmd(struct request *req, struct nvme_command *cmd,
 	return cmdinfo.status;
 }
 
+struct chario_cmd_info {
+	struct task_struct *task;
+	u32 result;
+	int status;
+	spinlock_t lock;
+	int remaining;
+};
+
+static void chario_completion(struct nvme_queue *nvmeq, void *ctx,
+                            struct nvme_completion *cqe)
+{
+	struct chario_cmd_info *cmdinfo = ctx;
+
+	pr_debug("NVMe: chario_completion() start, qid: %hu, tag: %d, remaining: %d\n", nvmeq->qid, cqe->command_id, cmdinfo->remaining);
+
+//	cmdinfo->result = le32_to_cpup(&cqe->result);
+//	cmdinfo->status = le16_to_cpup(&cqe->status) >> 1;
+
+	cmdinfo->remaining -= REQ_MAX_BLOCKS;
+	if (cmdinfo->remaining < 0) {
+		wake_up_process(cmdinfo->task);
+	}
+
+	pr_debug("NVMe: chario_completion() done, remaining: %d\n", cmdinfo->remaining);
+}
+
+static int nvme_submit_chario_cmd(struct nvme_dev *dev, struct nvme_command *cmd,
+                                unsigned timeout, struct chario_cmd_info *cmdinfo)
+{
+	struct nvme_queue *nvmeq = dev->queues[1];
+	int tag = nvmeq->next_chario_tag++;
+	struct nvme_cmd_info *cmd_rq = nvmeq->chario_cmds[tag];
+
+	pr_debug("NVMe: nvme_submit_chario_cmd(), qid: %d\n", nvmeq->qid);
+
+	cmd->common.command_id = (__u16)tag;
+
+	cmd_rq->fn = chario_completion;
+	cmd_rq->ctx = cmdinfo;
+	cmd_rq->aborted = 0;
+	cmd_rq->nvmeq = nvmeq;
+
+	nvme_submit_cmd_chario(nvmeq, cmd);
+
+	return 0;
+}
+
 static int nvme_submit_async_admin_req(struct nvme_dev *dev)
 {
 	struct nvme_queue *nvmeq = dev->queues[0];
@@ -1288,6 +1361,18 @@ int nvme_submit_io_cmd(struct nvme_dev *dev, struct nvme_ns *ns,
 		return PTR_ERR(req);
 	res = nvme_submit_sync_cmd(req, cmd, result, NVME_IO_TIMEOUT);
 	blk_mq_free_request(req);
+	return res;
+}
+
+int nvme_submit_chario_io_cmd(struct nvme_dev *dev, struct nvme_ns *ns,
+		       struct nvme_command *cmd, struct chario_cmd_info *cmdinfo)
+{
+	int res;
+
+	pr_debug("NVMe: nvme_submit_chario_io_cmd(), slba: %llu, length: %hu, prp1: 0x%08llx, prp2: 0x%08llx\n", cmd->rw.slba, cmd->rw.length, cmd->rw.prp1, cmd->rw.prp2);
+
+	res = nvme_submit_chario_cmd(dev, cmd, NVME_IO_TIMEOUT, cmdinfo);
+
 	return res;
 }
 
@@ -1500,10 +1585,20 @@ static enum blk_eh_timer_return nvme_timeout(struct request *req, bool reserved)
 
 static void nvme_free_queue(struct nvme_queue *nvmeq)
 {
+	int i;
+
 	dma_free_coherent(nvmeq->q_dmadev, CQ_SIZE(nvmeq->q_depth),
 				(void *)nvmeq->cqes, nvmeq->cq_dma_addr);
 	dma_free_coherent(nvmeq->q_dmadev, SQ_SIZE(nvmeq->q_depth),
 					nvmeq->sq_cmds, nvmeq->sq_dma_addr);
+
+	// Nothing is allocated in admin queue (0), so skip
+	if (nvmeq->qid > 0) {
+		for (i = 0; i < 32; i++) {
+			kfree(nvmeq->chario_cmds[i]);
+		}
+	}
+
 	kfree(nvmeq);
 }
 
@@ -1580,10 +1675,15 @@ static void nvme_disable_queue(struct nvme_dev *dev, int qid)
 static struct nvme_queue *nvme_alloc_queue(struct nvme_dev *dev, int qid,
 							int depth)
 {
+	int i;
+	size_t cmd_size = nvme_cmd_size(dev);
+
 	struct device *dmadev = &dev->pci_dev->dev;
 	struct nvme_queue *nvmeq = kzalloc(sizeof(*nvmeq), GFP_KERNEL);
 	if (!nvmeq)
 		return NULL;
+
+	pr_debug("NVMe: nvme_alloc_queue(), qid: %d, depth: %d\n", qid, depth);
 
 	nvmeq->cqes = dma_zalloc_coherent(dmadev, CQ_SIZE(depth),
 					  &nvmeq->cq_dma_addr, GFP_KERNEL);
@@ -1607,6 +1707,25 @@ static struct nvme_queue *nvme_alloc_queue(struct nvme_dev *dev, int qid,
 	nvmeq->qid = qid;
 	dev->queue_count++;
 	dev->queues[qid] = nvmeq;
+
+	// Don't allocate these for the admin queue
+	if (qid > 0) {
+		nvmeq->next_chario_tag = 0;
+		pr_debug("NVMe: nvme_alloc_queue(), allocating chario cmds\n");
+		for (i = 0; i < 32; i++) {
+			pr_debug(
+				"NVMe: nvme_alloc_queue(), allocating chario cmd %d\n",
+				i);
+			nvmeq->chario_cmds[i] = kzalloc(cmd_size, GFP_KERNEL);
+			if (!nvmeq->chario_cmds[i]) {
+				pr_warn("NVMe: nvme_alloc_queue(), cmd allocation %d failed\n",
+				        i);
+				return nvmeq;
+			}
+		}
+		pr_debug(
+			"NVMe: nvme_alloc_queue(), cmd allocations successful\n");
+	}
 
 	return nvmeq;
 
@@ -2218,7 +2337,7 @@ static int nvme_submit_io_kernel(struct nvme_ns *ns, struct nvme_user_io *uio)
 	return status;
 }
 
-static int nvme_submit_io_user(struct nvme_ns *ns, struct nvme_user_io *uio)
+static int nvme_submit_io_chario(struct nvme_ns *ns, struct nvme_user_io *uio)
 {
 	struct nvme_dev *dev = ns->dev;
 	struct nvme_user_io io;
@@ -2236,11 +2355,13 @@ static int nvme_submit_io_user(struct nvme_ns *ns, struct nvme_user_io *uio)
 	int remaining_pages, page_count;
 	int prp1_offset;
 	__le64 **prp_list;
+	unsigned long flags;
+	struct chario_cmd_info cmdinfo;
 
-	pr_debug("NVMe: nvme_submit_io_user()\n");
+	pr_debug("NVMe: nvme_submit_io_chario()\n");
 
 	if (memcpy(&io, uio, sizeof(io)) != &io) {
-		pr_debug("NVMe: nvme_submit_io_user() memcpy to &io failed\n");
+		pr_debug("NVMe: nvme_submit_io_chario() memcpy to &io failed\n");
 		return -EFAULT;
 	}
 	length = (io.nblocks + 1) << ns->lba_shift;
@@ -2285,7 +2406,7 @@ static int nvme_submit_io_user(struct nvme_ns *ns, struct nvme_user_io *uio)
 		}
 		if (write) {
 			if (memcpy(meta, metadata, meta_len) != meta) {
-				pr_debug("NVMe: nvme_submit_io_user() memcpy to meta failed\n");
+				pr_debug("NVMe: nvme_submit_io_chario() memcpy to meta failed\n");
 				status = -EFAULT;
 				goto unmap;
 			}
@@ -2301,9 +2422,18 @@ static int nvme_submit_io_user(struct nvme_ns *ns, struct nvme_user_io *uio)
 	prp1 = sg_dma_address(iod->sg);
 	prp2 = iod->first_dma;
 
+	cmdinfo.task = current;
+	cmdinfo.status = -EINTR;
+	spin_lock_init(&cmdinfo.lock);
+//	spin_lock_irqsave(&cmdinfo.lock, flags);
+	cmdinfo.remaining = remaining_blocks;
+//	spin_unlock_irqrestore(&cmdinfo.lock, flags);
+
+	pr_debug("NVMe: nvme_submit_io_chario() cmdinfo.remaining: %d", cmdinfo.remaining);
+
 	// Loop through transfers until we have 32 blocks (128KiB) or less to transfer
 	while (remaining_blocks >= REQ_MAX_BLOCKS) {
-		pr_debug("NVMe: nvme_submit_io_user() remaining_blocks: %hu, remaining_pages: %d, prp1_offset: %d\n", remaining_blocks, remaining_pages, prp1_offset);
+		pr_debug("NVMe: nvme_submit_io_chario() remaining_blocks: %hu, remaining_pages: %d, prp1_offset: %d\n", remaining_blocks, remaining_pages, prp1_offset);
 
 		memset(&c, 0, sizeof(c));
 		c.rw.opcode = io.opcode;
@@ -2319,9 +2449,9 @@ static int nvme_submit_io_user(struct nvme_ns *ns, struct nvme_user_io *uio)
 		c.rw.prp1 = cpu_to_le64(prp1);
 		c.rw.prp2 = cpu_to_le64(prp2);
 		c.rw.metadata = cpu_to_le64(meta_dma);
-		status = nvme_submit_io_cmd(dev, ns, &c, NULL);
+		status = nvme_submit_chario_io_cmd(dev, ns, &c, &cmdinfo);
 
-		pr_debug("NVMe: nvme_submit_io_user() status: %i\n", status);
+		pr_debug("NVMe: nvme_submit_io_chario() status: %i\n", status);
 
 		if (likely(status == NVME_SC_SUCCESS)) {
 			remaining_blocks -= REQ_MAX_BLOCKS;
@@ -2348,7 +2478,7 @@ static int nvme_submit_io_user(struct nvme_ns *ns, struct nvme_user_io *uio)
 			goto unmap;
 	}
 
-	pr_debug("NVMe: nvme_submit_io_user() remaining_blocks: %hu, remaining_pages: %d, prp1_offset: %d\n", remaining_blocks, remaining_pages, prp1_offset);
+	pr_debug("NVMe: nvme_submit_io_chario() remaining_blocks: %hu, remaining_pages: %d, prp1_offset: %d\n", remaining_blocks, remaining_pages, prp1_offset);
 
 	// Deal with the case when we're only getting two blocks, but > 32 blocks in total,
 	// so PRP2 should point to the DMA address rather than the PRP list
@@ -2369,9 +2499,21 @@ static int nvme_submit_io_user(struct nvme_ns *ns, struct nvme_user_io *uio)
 	c.rw.prp1 = cpu_to_le64(prp1);
 	c.rw.prp2 = cpu_to_le64(prp2);
 	c.rw.metadata = cpu_to_le64(meta_dma);
-	status = nvme_submit_io_cmd(dev, ns, &c, NULL);
+	status = nvme_submit_chario_io_cmd(dev, ns, &c, &cmdinfo);
 
-	pr_debug("NVMe: nvme_submit_io_user() status: %i\n", status);
+	pr_debug("NVMe: nvme_submit_io_chario() status: %d, cmdinfo.remaining: %d\n", status, cmdinfo.remaining);
+
+	spin_lock_irqsave(&cmdinfo.lock, flags);
+	if (cmdinfo.remaining > 0) {
+		set_current_state(TASK_UNINTERRUPTIBLE);
+	}
+	spin_unlock_irqrestore(&cmdinfo.lock, flags);
+	schedule();
+
+	pr_debug("NVMe: nvme_submit_io_chario() complete\n");
+
+	// Set next tag back to 0 (might want to handle multiple queues better here)
+	dev->queues[1]->next_chario_tag = 0;
 
 	unmap:
 	nvme_unmap_user_pages(dev, write, iod);
@@ -2379,16 +2521,18 @@ static int nvme_submit_io_user(struct nvme_ns *ns, struct nvme_user_io *uio)
 	if (meta) {
 		if (status == NVME_SC_SUCCESS && !write) {
 			if (memcpy(metadata, meta, meta_len) != metadata) {
-				pr_debug("NVMe: nvme_submit_io_user() memcpy to metadata failed\n");
+				pr_debug("NVMe: nvme_submit_io_chario() memcpy to metadata failed\n");
 				status = -EFAULT;
 			}
 		}
 		dma_free_coherent(&dev->pci_dev->dev, meta_len, meta, meta_dma);
 	}
+	pr_debug("NVMe: nvme_submit_io_chario() done\n");
 	return status;
 }
 
-static int nvme_submit_io_phys(struct nvme_ns *ns, struct nvme_user_io *uio)
+static int nvme_submit_io_chario_phys(struct nvme_ns *ns,
+                                      struct nvme_user_io *uio)
 {
 	struct nvme_dev *dev = ns->dev;
 	struct nvme_user_io io;
@@ -2407,10 +2551,10 @@ static int nvme_submit_io_phys(struct nvme_ns *ns, struct nvme_user_io *uio)
 	int prp1_offset;
 	__le64 **prp_list;
 
-	pr_debug("NVMe: nvme_submit_io_phys()\n");
+	pr_debug("NVMe: nvme_submit_io_chario_phys()\n");
 
 	if (memcpy(&io, uio, sizeof(io)) != &io) {
-		pr_debug("NVMe: nvme_submit_io_phys() memcpy to &io failed\n");
+		pr_debug("NVMe: nvme_submit_io_chario_phys() memcpy to &io failed\n");
 		return -EFAULT;
 	}
 	length = (io.nblocks + 1) << ns->lba_shift;
@@ -2455,7 +2599,7 @@ static int nvme_submit_io_phys(struct nvme_ns *ns, struct nvme_user_io *uio)
 		}
 		if (write) {
 			if (memcpy(meta, metadata, meta_len) != meta) {
-				pr_debug("NVMe: nvme_submit_io_phys() memcpy to meta failed\n");
+				pr_debug("NVMe: nvme_submit_io_chario_phys() memcpy to meta failed\n");
 				status = -EFAULT;
 				goto unmap;
 			}
@@ -2473,7 +2617,7 @@ static int nvme_submit_io_phys(struct nvme_ns *ns, struct nvme_user_io *uio)
 
 	// Loop through transfers until we have 32 blocks (128KiB) or less to transfer
 	while (remaining_blocks >= REQ_MAX_BLOCKS) {
-		pr_debug("NVMe: nvme_submit_io_phys() remaining_blocks: %hu, remaining_pages: %d, prp1_offset: %d\n", remaining_blocks, remaining_pages, prp1_offset);
+		pr_debug("NVMe: nvme_submit_io_chario_phys() remaining_blocks: %hu, remaining_pages: %d, prp1_offset: %d\n", remaining_blocks, remaining_pages, prp1_offset);
 
 		memset(&c, 0, sizeof(c));
 		c.rw.opcode = io.opcode;
@@ -2491,7 +2635,7 @@ static int nvme_submit_io_phys(struct nvme_ns *ns, struct nvme_user_io *uio)
 		c.rw.metadata = cpu_to_le64(meta_dma);
 		status = nvme_submit_io_cmd(dev, ns, &c, NULL);
 
-		pr_debug("NVMe: nvme_submit_io_phys() status: %i\n", status);
+		pr_debug("NVMe: nvme_submit_io_chario_phys() status: %i\n", status);
 
 		if (likely(status == NVME_SC_SUCCESS)) {
 			remaining_blocks -= REQ_MAX_BLOCKS;
@@ -2518,7 +2662,7 @@ static int nvme_submit_io_phys(struct nvme_ns *ns, struct nvme_user_io *uio)
 			goto unmap;
 	}
 
-	pr_debug("NVMe: nvme_submit_io_phys() remaining_blocks: %hu, remaining_pages: %d, prp1_offset: %d\n", remaining_blocks, remaining_pages, prp1_offset);
+	pr_debug("NVMe: nvme_submit_io_chario_phys() remaining_blocks: %hu, remaining_pages: %d, prp1_offset: %d\n", remaining_blocks, remaining_pages, prp1_offset);
 
 	// Deal with the case when we're only getting two blocks, but > 32 blocks in total,
 	// so PRP2 should point to the DMA address rather than the PRP list
@@ -2541,14 +2685,14 @@ static int nvme_submit_io_phys(struct nvme_ns *ns, struct nvme_user_io *uio)
 	c.rw.metadata = cpu_to_le64(meta_dma);
 	status = nvme_submit_io_cmd(dev, ns, &c, NULL);
 
-	pr_debug("NVMe: nvme_submit_io_phys() status: %i\n", status);
+	pr_debug("NVMe: nvme_submit_io_chario_phys() status: %i\n", status);
 
 	unmap:
 	nvme_free_phys_iod(dev, iod);
 	if (meta) {
 		if (status == NVME_SC_SUCCESS && !write) {
 			if (memcpy(metadata, meta, meta_len) != metadata) {
-				pr_debug("NVMe: nvme_submit_io_phys() memcpy to metadata failed\n");
+				pr_debug("NVMe: nvme_submit_io_chario_phys() memcpy to metadata failed\n");
 				status = -EFAULT;
 			}
 		}
@@ -3958,11 +4102,11 @@ int chario_nvme_submit_io_kernel(struct nvme_ns *ns, struct nvme_user_io *uio) {
 }
 
 int chario_nvme_submit_io_user(struct nvme_ns *ns, struct nvme_user_io *uio) {
-	return nvme_submit_io_user(ns, uio);
+	return nvme_submit_io_chario(ns, uio);
 }
 
 int chario_nvme_submit_io_phys(struct nvme_ns *ns, struct nvme_user_io *uio) {
-	return nvme_submit_io_phys(ns, uio);
+	return nvme_submit_io_chario_phys(ns, uio);
 }
 
 struct nvme_dev *chario_nvme_get_current_dev() {
