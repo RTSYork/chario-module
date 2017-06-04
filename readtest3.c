@@ -7,7 +7,7 @@
 #include <unistd.h>
 //#include <malloc.h>
 
-#define BUFFER_LENGTH (1024*1024*10) // Should be a multiple of NVMe block size, as we DMA straight to it without checking
+#define BUFFER_LENGTH (4096*1024*10) // Should be a multiple of NVMe block size, as we DMA straight to it without checking
 
 char buffer[BUFFER_LENGTH] __attribute__((aligned(0x1000)));
 
@@ -44,7 +44,7 @@ int main(int argc, char **argv) {
 	printf("Result: %zd\n", result);
 
 	if (result < 0) {
-		perror("Failed to read the message from the device");
+		perror("Failed to read from the device");
 		return errno;
 	}
 
