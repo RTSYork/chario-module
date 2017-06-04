@@ -2426,7 +2426,7 @@ static int nvme_submit_io_chario(struct nvme_ns *ns, struct nvme_user_io *uio)
 	cmdinfo.status = -EINTR;
 	spin_lock_init(&cmdinfo.lock);
 //	spin_lock_irqsave(&cmdinfo.lock, flags);
-	cmdinfo.remaining = remaining_blocks;
+	cmdinfo.remaining = remaining_blocks; // Remember this will be (total blocks - 1)
 //	spin_unlock_irqrestore(&cmdinfo.lock, flags);
 
 	pr_debug("NVMe: nvme_submit_io_chario() cmdinfo.remaining: %d", cmdinfo.remaining);
@@ -2504,7 +2504,7 @@ static int nvme_submit_io_chario(struct nvme_ns *ns, struct nvme_user_io *uio)
 	pr_debug("NVMe: nvme_submit_io_chario() status: %d, cmdinfo.remaining: %d\n", status, cmdinfo.remaining);
 
 	spin_lock_irqsave(&cmdinfo.lock, flags);
-	if (cmdinfo.remaining > 0) {
+	if (cmdinfo.remaining >= 0) {
 		set_current_state(TASK_UNINTERRUPTIBLE);
 	}
 	spin_unlock_irqrestore(&cmdinfo.lock, flags);
