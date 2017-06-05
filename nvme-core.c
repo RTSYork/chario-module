@@ -1240,13 +1240,16 @@ static void chario_completion(struct nvme_queue *nvmeq, void *ctx,
                             struct nvme_completion *cqe)
 {
 	struct chario_cmd_info *cmdinfo = ctx;
+	unsigned long flags;
 
 	pr_debug("NVMe: chario_completion() start, qid: %hu, tag: %d, remaining: %d\n", nvmeq->qid, cqe->command_id, cmdinfo->remaining);
 
 //	cmdinfo->result = le32_to_cpup(&cqe->result);
 //	cmdinfo->status = le16_to_cpup(&cqe->status) >> 1;
 
+	spin_lock_irqsave(&cmdinfo->lock, flags);
 	cmdinfo->remaining -= REQ_MAX_BLOCKS;
+	spin_unlock_irqrestore(&cmdinfo->lock, flags);
 	if (cmdinfo->remaining < 0) {
 		wake_up_process(cmdinfo->task);
 	}
