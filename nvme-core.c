@@ -2553,6 +2553,8 @@ static int nvme_submit_io_chario_phys(struct nvme_ns *ns,
 	int remaining_pages, page_count;
 	int prp1_offset;
 	__le64 **prp_list;
+	unsigned long flags;
+	struct chario_cmd_info cmdinfo;
 
 	pr_debug("NVMe: nvme_submit_io_chario_phys()\n");
 
@@ -2618,6 +2620,15 @@ static int nvme_submit_io_chario_phys(struct nvme_ns *ns,
 	prp1 = iod->prp1;
 	prp2 = iod->prp2;
 
+	cmdinfo.task = current;
+	cmdinfo.status = -EINTR;
+	spin_lock_init(&cmdinfo.lock);
+//	spin_lock_irqsave(&cmdinfo.lock, flags);
+	cmdinfo.remaining = remaining_blocks; // Remember this will be (total blocks - 1)
+//	spin_unlock_irqrestore(&cmdinfo.lock, flags);
+
+	pr_debug("NVMe: nvme_submit_io_chario_phys() cmdinfo.remaining: %d", cmdinfo.remaining);
+
 	// Loop through transfers until we have 32 blocks (128KiB) or less to transfer
 	while (remaining_blocks >= REQ_MAX_BLOCKS) {
 		pr_debug("NVMe: nvme_submit_io_chario_phys() remaining_blocks: %hu, remaining_pages: %d, prp1_offset: %d\n", remaining_blocks, remaining_pages, prp1_offset);
@@ -2636,7 +2647,7 @@ static int nvme_submit_io_chario_phys(struct nvme_ns *ns,
 		c.rw.prp1 = cpu_to_le64(prp1);
 		c.rw.prp2 = cpu_to_le64(prp2);
 		c.rw.metadata = cpu_to_le64(meta_dma);
-		status = nvme_submit_io_cmd(dev, ns, &c, NULL);
+		status = nvme_submit_chario_io_cmd(dev, ns, &c, &cmdinfo);
 
 		pr_debug("NVMe: nvme_submit_io_chario_phys() status: %i\n", status);
 
@@ -2686,9 +2697,21 @@ static int nvme_submit_io_chario_phys(struct nvme_ns *ns,
 	c.rw.prp1 = cpu_to_le64(prp1);
 	c.rw.prp2 = cpu_to_le64(prp2);
 	c.rw.metadata = cpu_to_le64(meta_dma);
-	status = nvme_submit_io_cmd(dev, ns, &c, NULL);
+	status = nvme_submit_chario_io_cmd(dev, ns, &c, &cmdinfo);
 
-	pr_debug("NVMe: nvme_submit_io_chario_phys() status: %i\n", status);
+	pr_debug("NVMe: nvme_submit_io_chario_phys() status: %d, cmdinfo.remaining: %d\n", status, cmdinfo.remaining);
+
+	spin_lock_irqsave(&cmdinfo.lock, flags);
+	if (cmdinfo.remaining >= 0) {
+		set_current_state(TASK_UNINTERRUPTIBLE);
+	}
+	spin_unlock_irqrestore(&cmdinfo.lock, flags);
+	schedule();
+
+	pr_debug("NVMe: nvme_submit_io_chario_phys() complete\n");
+
+	// Set next tag back to 0 (might want to handle multiple queues better here)
+	dev->queues[1]->next_chario_tag = 0;
 
 	unmap:
 	nvme_free_phys_iod(dev, iod);
@@ -2701,6 +2724,7 @@ static int nvme_submit_io_chario_phys(struct nvme_ns *ns,
 		}
 		dma_free_coherent(&dev->pci_dev->dev, meta_len, meta, meta_dma);
 	}
+	pr_debug("NVMe: nvme_submit_io_chario_phys() done\n");
 	return status;
 }
 
