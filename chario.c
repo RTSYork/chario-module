@@ -208,7 +208,7 @@ static int submit_user_io(char *buffer, size_t len, loff_t offset, __u8 command)
 		return 0;
 	}
 
-	pr_debug("CharIO: submit_user_io() nblocks: %hu, slba: %llu, addr: 0x%08x, opcode: %hhu", nblocks, slba, (unsigned)buffer, command);
+	pr_debug("CharIO: submit_user_io() nblocks: %hu, slba: %llu, addr: 0x%016llx, opcode: %hhu", nblocks, slba, (unsigned long long)buffer, command);
 
 	result = chario_nvme_submit_io_user(ns, &uio);
 
@@ -244,7 +244,7 @@ static int __submit_phys_io(dma_addr_t address, size_t len, loff_t offset, __u8 
 		return 0;
 	}
 
-	pr_debug("CharIO: __submit_phys_io() nblocks: %hu, slba: %llu, addr: 0x%08x, opcode: %hhu", nblocks, slba, address, command);
+	pr_debug("CharIO: __submit_phys_io() nblocks: %hu, slba: %llu, addr: 0x%16llx, opcode: %hhu", nblocks, slba, address, command);
 
 	result = chario_nvme_submit_io_phys(ns, &uio);
 

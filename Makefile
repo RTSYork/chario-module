@@ -1,5 +1,5 @@
 obj-m += chario-module.o
-chario-module-objs += chario.o nvme-core.o nvme-scsi.o
+chario-module-objs += chario.o nvme-core.o
 
 all:
 	make -C /lib/modules/$(shell uname -r)/build/ M=$(PWD) modules

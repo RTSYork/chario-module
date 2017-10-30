@@ -1,7 +1,8 @@
 #ifndef CHARIO_MODULE_NVME_CORE_H
 #define CHARIO_MODULE_NVME_CORE_H
 
-#include <linux/nvme.h>
+//#include <linux/nvme.h>
+#include "nvme.h"
 
 #define REQ_MAX_BYTES 131072 // 128k - Maximum transfer size in one NVMe request (from testing)
 #define REQ_MAX_BLOCKS 32 // 32 x 4096k blocks - Maximum transfer size in one NVMe request (from testing)
