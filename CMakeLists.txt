@@ -15,18 +15,18 @@ IF(UNIX)
 ENDIF(UNIX)
 
 
-set(SOURCES chario.c nvme-core.c nvme-scsi.c)
+set(SOURCES chario.c nvme-core.c)
 
 
 # Fix include directories
 include_directories(${CMAKE_SOURCE_DIR}/include/)
 include_directories(${CMAKE_SOURCE_DIR}/include/uapi/)
-include_directories(${CMAKE_SOURCE_DIR}/arch/arm/include/)
-include_directories(${CMAKE_SOURCE_DIR}/arch/arm/include/uapi/)
+include_directories(${CMAKE_SOURCE_DIR}/arch/arm64/include/)
+include_directories(${CMAKE_SOURCE_DIR}/arch/arm64/include/uapi/)
 set(INCLUDE_DIRECTORIES ${CMAKE_SOURCE_DIR}/include/)
 set(INCLUDE_DIRECTORIES ${CMAKE_SOURCE_DIR}/include/uapi/)
-set(INCLUDE_DIRECTORIES ${CMAKE_SOURCE_DIR}/arch/arm/include/)
-set(INCLUDE_DIRECTORIES ${CMAKE_SOURCE_DIR}/arch/arm/include/uapi/)
+set(INCLUDE_DIRECTORIES ${CMAKE_SOURCE_DIR}/arch/arm64/include/)
+set(INCLUDE_DIRECTORIES ${CMAKE_SOURCE_DIR}/arch/arm64/include/uapi/)
 add_definitions(-D__CLION__)
 add_executable(chario ${SOURCES})
 add_executable(chardevtest chardevtest.c)
@@ -45,7 +45,7 @@ add_executable(ddrtest ddrtest.c)
 add_executable(acptest acptest.c)
 
 
-# Target to SCP to and make on Zynq
+# Target to SCP to and make on Zynq MITX
 add_custom_target(
         zynq-mitx ALL
         SOURCES ${SOURCES}
@@ -63,11 +63,29 @@ add_custom_target(
         COMMAND ssh dave 'cd /home/russell/chario && make'
 )
 
-# Target to SCP to and make libchario on Zynq
+# Target to SCP to and make on ZCU102
+add_custom_target(
+        zcu102 ALL
+        SOURCES ${SOURCES}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMAND rsync -uv *.c *.h Makefile zcu102:/home/russell/chario
+        COMMAND ssh zcu102 'cd /home/russell/chario && make'
+)
+
+# Target to SCP to and make libchario on Zynq MITX
 add_custom_target(
         libchario-zynq ALL
         SOURCES libchario/libchario.c libchario/libchario-test.c
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/libchario
         COMMAND rsync -ruv CMakeLists.txt *.c *.h zynq-mitx:/root/chario/libchario
-        COMMAND ssh zynq-mitx 'cd /root/chario/libchario && make'
+        COMMAND ssh zynq-mitx 'cd /root/chario/libchario && cmake . && make'
+)
+
+# Target to SCP to and make libchario on ZCU102
+add_custom_target(
+        libchario-zcu102 ALL
+        SOURCES libchario/libchario.c libchario/libchario-test.c
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/libchario
+        COMMAND rsync -ruv CMakeLists.txt *.c *.h zcu102:/home/russell/chario/libchario
+        COMMAND ssh zcu102 'cd /home/russell/chario/libchario && cmake . && make'
 )
