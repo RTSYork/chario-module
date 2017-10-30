@@ -131,7 +131,7 @@ int chario_load_blocks_for_task(struct chario_task *task) {
 #else
 		lseek(fd, range->start * CHARIO_BLOCK_SIZE, SEEK_SET);
 		count = read(fd, buffer + (range->buffer_offset/8), range->count * CHARIO_BLOCK_SIZE);
-		info_print("        read %zd of %zu bytes to 0x%08x", count, range->count * CHARIO_BLOCK_SIZE, (unsigned)(buffer + (range->buffer_offset/8)));
+		info_print("        read %zd of %zu bytes to 0x%016llx", count, range->count * CHARIO_BLOCK_SIZE, (unsigned long long)(buffer + (range->buffer_offset/8)));
 #endif
 	}
 
@@ -169,7 +169,7 @@ int chario_flush_blocks_for_task(struct chario_task *task) {
 #else
 		lseek(fd, range->start * CHARIO_BLOCK_SIZE, SEEK_SET);
 		count = write(fd, buffer + (range->buffer_offset/8), range->count * CHARIO_BLOCK_SIZE);
-		info_print("        wrote %zd of %zu bytes from 0x%08x", count, range->count * CHARIO_BLOCK_SIZE, (unsigned)(buffer + (range->buffer_offset/8)));
+		info_print("        wrote %zd of %zu bytes from 0x%016llx", count, range->count * CHARIO_BLOCK_SIZE, (unsigned long long)(buffer + (range->buffer_offset/8)));
 #endif
 	}
 

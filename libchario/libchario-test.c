@@ -70,7 +70,7 @@ int main(int argc __attribute__((unused)), char *argv[] __attribute__((unused)))
 					buffer[k] = new_value;
 				}
 				else {
-					printf("Word %zu (0x%08x) is incorrect (0x%016llx)\n", k, (unsigned)&buffer[k], buffer[k]);
+					printf("Word %zu (0x%016llx) is incorrect (0x%016lx)\n", k, (unsigned long long)&buffer[k], buffer[k]);
 					returnVal = 1;
 					errors++;
 					if (errors > 10)
