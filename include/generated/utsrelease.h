@@ -1,1 +1,1 @@
-#define UTS_RELEASE "4.1.15-rt17-profiling-g8a01727"
+#define UTS_RELEASE "4.9.0"

@@ -84,10 +84,10 @@ int init_srcu_struct(struct srcu_struct *sp);
 
 void process_srcu(struct work_struct *work);
 
-#define __SRCU_STRUCT_INIT(name, pcpu_name)				\
+#define __SRCU_STRUCT_INIT(name)					\
 	{								\
 		.completed = -300,					\
-		.per_cpu_ref = &pcpu_name,				\
+		.per_cpu_ref = &name##_srcu_array,			\
 		.queue_lock = __SPIN_LOCK_UNLOCKED(name.queue_lock),	\
 		.running = false,					\
 		.batch_queue = RCU_BATCH_INIT(name.batch_queue),	\
@@ -99,12 +99,27 @@ void process_srcu(struct work_struct *work);
 	}
 
 /*
- * define and init a srcu struct at build time.
- * dont't call init_srcu_struct() nor cleanup_srcu_struct() on it.
+ * Define and initialize a srcu struct at build time.
+ * Do -not- call init_srcu_struct() nor cleanup_srcu_struct() on it.
+ *
+ * Note that although DEFINE_STATIC_SRCU() hides the name from other
+ * files, the per-CPU variable rules nevertheless require that the
+ * chosen name be globally unique.  These rules also prohibit use of
+ * DEFINE_STATIC_SRCU() within a function.  If these rules are too
+ * restrictive, declare the srcu_struct manually.  For example, in
+ * each file:
+ *
+ *	static struct srcu_struct my_srcu;
+ *
+ * Then, before the first use of each my_srcu, manually initialize it:
+ *
+ *	init_srcu_struct(&my_srcu);
+ *
+ * See include/linux/percpu-defs.h for the rules on per-CPU variables.
  */
 #define __DEFINE_SRCU(name, is_static)					\
 	static DEFINE_PER_CPU(struct srcu_struct_array, name##_srcu_array);\
-	is_static struct srcu_struct name = __SRCU_STRUCT_INIT(name, name##_srcu_array)
+	is_static struct srcu_struct name = __SRCU_STRUCT_INIT(name)
 #define DEFINE_SRCU(name)		__DEFINE_SRCU(name, /* not static */)
 #define DEFINE_STATIC_SRCU(name)	__DEFINE_SRCU(name, static)
 
@@ -215,8 +230,11 @@ static inline int srcu_read_lock_held(struct srcu_struct *sp)
  */
 static inline int srcu_read_lock(struct srcu_struct *sp) __acquires(sp)
 {
-	int retval = __srcu_read_lock(sp);
+	int retval;
 
+	preempt_disable();
+	retval = __srcu_read_lock(sp);
+	preempt_enable();
 	rcu_lock_acquire(&(sp)->dep_map);
 	return retval;
 }
