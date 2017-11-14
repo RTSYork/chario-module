@@ -366,7 +366,7 @@ static void *nvme_finish_cmd(struct nvme_queue *nvmeq, int tag,
 	struct nvme_cmd_info *cmd;
 	void *ctx;
 
-	if (nvmeq->qid == 0) {
+	if (nvmeq->qid == 0 || tag > 31) {
 		// Admin queue, so use blk_mq
 		cmd = get_cmd_from_tag(nvmeq, tag);
 	}
