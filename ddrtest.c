@@ -13,7 +13,7 @@
 
 //#define BUFFER_LENGTH 8192 // Should be a multiple of NVMe block size, as we DMA straight to it without checking
 #define DDR_SIZE 0x20000000
-#define DDR_START 0x20000000
+#define DDR_START 0x500000000
 
 //static char in_buf[DDR_SIZE/4] __attribute__((aligned(0x1000)));
 //static char out_buf[DDR_SIZE/4] __attribute__((aligned(0x1000)));
@@ -42,7 +42,7 @@ int main(void) {
 
 	ddr = mmap(NULL, DDR_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, mfd, DDR_START);
 	if (ddr == MAP_FAILED) {
-		perror("Can't map BRAM memory");
+		perror("Can't map DDR memory");
 		cleanup();
 		return 1;
 	}
