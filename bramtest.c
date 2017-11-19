@@ -12,11 +12,11 @@
 #include "chario.h"
 
 //#define BUFFER_LENGTH 8192 // Should be a multiple of NVMe block size, as we DMA straight to it without checking
-#define BRAM_SIZE 0x200000
-#define BRAM_START 0x60000000
+#define BRAM_SIZE  0x00280000
+#define BRAM_START 0x80000000
 
-static char in_buf[BRAM_SIZE] __attribute__((aligned(0x1000)));
-static char out_buf[BRAM_SIZE] __attribute__((aligned(0x1000)));
+//static char in_buf[BRAM_SIZE] __attribute__((aligned(0x1000)));
+//static char out_buf[BRAM_SIZE] __attribute__((aligned(0x1000)));
 
 char *bram;
 int mfd;
@@ -47,7 +47,7 @@ int main(void) {
 		return 1;
 	}
 
-	sprintf(bram, "Hello there. I am some BRAM.");
+	sprintf(bram, "Hello there. I am some BRAM....");
 
 	munmap(bram, BRAM_SIZE);
 	close(mfd);
